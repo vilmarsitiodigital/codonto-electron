@@ -59,6 +59,7 @@
     }
     .badge.ativo   { background: #052e16; color: #4ade80; border: 1px solid #16a34a; }
     .badge.parado  { background: #1c0000; color: #f87171; border: 1px solid #dc2626; }
+    .badge.aguardando { background: #422006; color: #fbbf24; border: 1px solid #d97706; }
     .badge.dot::before {
       content: '';
       width: 6px;
@@ -288,9 +289,14 @@
     const inputIntervalo = document.getElementById('input-intervalo');
 
     // ── Atualiza UI do status ──────────────────────────────────
-    function setStatus(rodando) {
+    function setStatus(rodando, aguardandoLogin = false) {
       agentRodando = rodando;
-      if (rodando) {
+      if (aguardandoLogin) {
+        badge.className = 'badge aguardando dot';
+        badge.textContent = 'Aguardando login';
+        btnToggle.className = 'btn-toggle parar';
+        btnToggle.textContent = 'Pausar';
+      } else if (rodando) {
         badge.className = 'badge ativo dot';
         badge.textContent = 'Agente ativo';
         btnToggle.className = 'btn-toggle parar';
@@ -329,6 +335,8 @@
       'polling:erro':         { cls: 'erro',    emoji: '⚠️', titulo: 'Erro de conexão com API' },
       'agente:parado':        { cls: 'aviso',   emoji: '⏸',  titulo: 'Agente pausado' },
       'agente:iniciado':      { cls: 'sucesso', emoji: '▶️', titulo: 'Agente iniciado' },
+      'agente:aguardando_login': { cls: 'aviso', emoji: '🔐', titulo: 'Polling pausado — faça login no Codonto' },
+      'agente:login_ok':      { cls: 'sucesso', emoji: '✅', titulo: 'Login detectado — retomando tarefas' },
     };
 
     function adicionarEvento(tipo, dados) {
@@ -369,12 +377,14 @@
     // ── Ouve eventos do main process ─────────────────────────
     window.codonto.onEvento(({ tipo, dados }) => {
       if (tipo === 'polling:vazio') return;
-      if (tipo === 'tarefa:passo') return; // passos detalhados só no log
+      if (tipo === 'tarefa:passo') return;
       adicionarEvento(tipo, dados || {});
+      if (tipo === 'agente:aguardando_login') setStatus(true, true);
+      if (tipo === 'agente:login_ok') setStatus(true, false);
       atualizarCards();
     });
 
-    window.codonto.onStatusAgente(({ rodando }) => setStatus(rodando));
+    window.codonto.onStatusAgente(({ rodando, aguardandoLogin }) => setStatus(rodando, aguardandoLogin));
 
     // ── Cards de resumo ───────────────────────────────────────
     async function atualizarCards() {
@@ -436,8 +446,8 @@
 
     // ── Init ──────────────────────────────────────────────────
     (async () => {
-      const { rodando } = await window.codonto.statusAgente();
-      setStatus(rodando);
+      const { rodando, aguardandoLogin } = await window.codonto.statusAgente();
+      setStatus(rodando, aguardandoLogin);
       await carregarDesde();
       await carregarIntervalo();
       await atualizarCards();

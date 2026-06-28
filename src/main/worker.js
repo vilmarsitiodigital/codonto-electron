@@ -1,12 +1,20 @@
 require('dotenv').config();
 const { buscarTarefasPendentes, baixarFoto, atualizarTarefa, reprocessarSemFoto } = require('./apiClient');
-const { processarNoCodonto } = require('./codontoAutomation');
+const {
+  processarNoCodonto,
+  verificarSessaoAtiva,
+  garantirTelaLogin,
+} = require('./codontoAutomation');
 const { getTarefasDesde, getPollInterval } = require('./config');
 const logger = require('./logger');
 
+const LOGIN_WATCH_MS = 2000;
+
 let rodando = false;
 let timeoutId = null;
+let loginWatchId = null;
 let emProcessamento = false;
+let aguardandoLogin = false;
 
 // Callback para enviar eventos para a janela Electron (UI)
 let onEventoCallback = null;
@@ -31,14 +39,21 @@ function cancelarAgendamento() {
   }
 }
 
+function pararVigiaLogin() {
+  if (loginWatchId) {
+    clearInterval(loginWatchId);
+    loginWatchId = null;
+  }
+}
+
 function agendarProximoTick() {
   cancelarAgendamento();
-  if (!rodando) return;
+  if (!rodando || aguardandoLogin) return;
   timeoutId = setTimeout(() => void executarTick(), intervaloMs());
 }
 
 async function executarTick() {
-  if (!rodando) return;
+  if (!rodando || aguardandoLogin) return;
   try {
     await tick();
   } finally {
@@ -46,17 +61,49 @@ async function executarTick() {
   }
 }
 
+function iniciarVigiaLogin() {
+  if (loginWatchId || !rodando) return;
+
+  aguardandoLogin = true;
+  cancelarAgendamento();
+  emitir('agente:aguardando_login');
+
+  void garantirTelaLogin((passo) => emitir('tarefa:passo', { passo }));
+
+  loginWatchId = setInterval(async () => {
+    if (!rodando) {
+      pararVigiaLogin();
+      aguardandoLogin = false;
+      return;
+    }
+
+    try {
+      const logado = await verificarSessaoAtiva();
+      if (!logado) return;
+
+      logger.info('Login detectado — retomando polling');
+      pararVigiaLogin();
+      aguardandoLogin = false;
+      emitir('agente:login_ok');
+      void executarTick();
+    } catch (err) {
+      logger.warn('Erro ao verificar sessão do Codonto', { error: err.message });
+    }
+  }, LOGIN_WATCH_MS);
+}
+
 function atualizarIntervalo() {
   const segundos = getPollInterval();
   logger.info(`Intervalo de polling atualizado — ${segundos}s`);
-  if (rodando && !emProcessamento) {
+  if (rodando && !emProcessamento && !aguardandoLogin) {
     agendarProximoTick();
   }
   return { segundos };
 }
 
 /**
- * Processa uma única tarefa do início ao fim
+ * Processa uma única tarefa do início ao fim.
+ * @returns {'ok'|'login_required'|'erro'}
  */
 async function processarTarefa(tarefa) {
   emitir('tarefa:iniciando', {
@@ -74,7 +121,7 @@ async function processarTarefa(tarefa) {
   } catch (err) {
     logger.error('Falha ao marcar tarefa como processando', { id: tarefa.id, error: err.message });
     emitir('tarefa:erro', { id: tarefa.id, erro: err.message });
-    return;
+    return 'erro';
   }
 
   try {
@@ -90,13 +137,13 @@ async function processarTarefa(tarefa) {
     if (resultado.sucesso) {
       await atualizarTarefa(tarefa.id, 'concluida');
       emitir('tarefa:concluida', { id: tarefa.id, prontuario: tarefa.prontuario });
-      return;
+      return 'ok';
     }
 
     if (resultado.code === 'LOGIN_REQUIRED') {
       await atualizarTarefa(tarefa.id, 'pendente');
       emitir('tarefa:login_necessario', { id: tarefa.id, erro: resultado.erro });
-      return;
+      return 'login_required';
     }
 
     await atualizarTarefa(tarefa.id, 'erro', resultado.erro);
@@ -105,10 +152,12 @@ async function processarTarefa(tarefa) {
       erro: resultado.erro,
       etapa: resultado.etapa,
     });
+    return 'erro';
   } catch (err) {
     logger.error('Erro inesperado ao processar tarefa', { id: tarefa.id, error: err.message });
     await atualizarTarefa(tarefa.id, 'erro', err.message).catch(() => {});
     emitir('tarefa:erro', { id: tarefa.id, erro: err.message });
+    return 'erro';
   }
 }
 
@@ -136,8 +185,12 @@ async function tick() {
 
     // Processa uma por vez (sequencial, mais seguro)
     for (const tarefa of tarefas) {
-      if (!rodando) break; // Parou durante o loop
-      await processarTarefa(tarefa);
+      if (!rodando) break;
+      const status = await processarTarefa(tarefa);
+      if (status === 'login_required') {
+        iniciarVigiaLogin();
+        break;
+      }
     }
   } catch (err) {
     logger.error('Erro no polling', { error: err.message });
@@ -158,7 +211,11 @@ function iniciar() {
   );
   emitir('agente:iniciado');
 
-  void executarTick();
+  if (aguardandoLogin) {
+    iniciarVigiaLogin();
+  } else {
+    void executarTick();
+  }
 }
 
 /**
@@ -167,7 +224,9 @@ function iniciar() {
 function parar() {
   if (!rodando) return;
   rodando = false;
+  aguardandoLogin = false;
   cancelarAgendamento();
+  pararVigiaLogin();
   logger.info('Agente parado');
   emitir('agente:parado');
 }
@@ -180,11 +239,16 @@ function estaProcessando() {
   return emProcessamento;
 }
 
+function estaAguardandoLogin() {
+  return aguardandoLogin;
+}
+
 module.exports = {
   iniciar,
   parar,
   estaRodando,
   estaProcessando,
+  estaAguardandoLogin,
   onEvento,
   atualizarIntervalo,
 };

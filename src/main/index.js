@@ -60,11 +60,17 @@ function criarTray() {
 
 function atualizarMenuTray() {
   const rodando = worker.estaRodando();
+  const aguardandoLogin = worker.estaAguardandoLogin();
+  const statusLabel = aguardandoLogin
+    ? '🔐 Aguardando login no Codonto'
+    : rodando
+      ? '🟢 Agente ativo'
+      : '🔴 Agente parado';
   const menu = Menu.buildFromTemplate([
     { label: 'Codonto Sync', enabled: false },
     { type: 'separator' },
     {
-      label: rodando ? '🟢 Agente ativo' : '🔴 Agente parado',
+      label: statusLabel,
       enabled: false,
     },
     { type: 'separator' },
@@ -74,7 +80,10 @@ function atualizarMenuTray() {
         if (rodando) worker.parar();
         else worker.iniciar();
         atualizarMenuTray();
-        mainWindow?.webContents.send('agente:status', { rodando: worker.estaRodando() });
+        mainWindow?.webContents.send('agente:status', {
+          rodando: worker.estaRodando(),
+          aguardandoLogin: worker.estaAguardandoLogin(),
+        });
       },
     },
     { label: 'Abrir painel', click: () => mainWindow?.show() },
@@ -107,6 +116,7 @@ ipcMain.handle('agente:parar', () => {
 
 ipcMain.handle('agente:status', () => ({
   rodando: worker.estaRodando(),
+  aguardandoLogin: worker.estaAguardandoLogin(),
 }));
 
 ipcMain.handle('status:buscar', async () => {
@@ -157,11 +167,17 @@ worker.onEvento((tipo, dados) => {
   if (tipo === 'tarefa:concluida') {
     tray?.setToolTip(`✅ Prontuário ${dados.prontuario} concluído`);
   } else if (tipo === 'tarefa:login_necessario') {
-    tray?.setToolTip('🔐 Faça login no Codonto e tente novamente');
+    tray?.setToolTip('🔐 Faça login no Codonto — polling pausado');
+  } else if (tipo === 'agente:aguardando_login') {
+    tray?.setToolTip('🔐 Aguardando login no Codonto...');
+  } else if (tipo === 'agente:login_ok') {
+    tray?.setToolTip('✅ Login detectado — retomando tarefas');
   } else if (tipo === 'tarefa:erro') {
     tray?.setToolTip(`❌ Erro na última tarefa`);
   }
-  atualizarMenuTray();
+  if (['tarefa:concluida', 'tarefa:login_necessario', 'agente:aguardando_login', 'agente:login_ok', 'tarefa:erro', 'agente:iniciado', 'agente:parado'].includes(tipo)) {
+    atualizarMenuTray();
+  }
 });
 
 // ─── App lifecycle ────────────────────────────────────────────

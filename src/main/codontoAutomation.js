@@ -6,7 +6,7 @@ const os = require('os');
 const { app } = require('electron');
 const logger = require('./logger');
 const { AutomationError } = require('./automation/AutomationError');
-const { TIPO_FOTO_MAP } = require('./automation/codontoSelectors');
+const { TIPO_FOTO_MAP, getLocators } = require('./automation/codontoSelectors');
 const {
   openSystem,
   ensureLogged,
@@ -167,4 +167,45 @@ async function fecharBrowser() {
   }
 }
 
-module.exports = { processarNoCodonto, fecharBrowser, iniciarBrowser };
+/** Verifica se o campo "Pesquisar Paciente" está visível (sessão autenticada). */
+async function verificarSessaoAtiva() {
+  if (!context || !context.browser()?.isConnected()) {
+    return false;
+  }
+
+  const page = await obterPaginaAutomacao(context).catch(() => null);
+  if (!page || page.isClosed()) {
+    return false;
+  }
+
+  const { loggedIn } = getLocators(page);
+  return loggedIn.searchPatient.isVisible().catch(() => false);
+}
+
+/** Garante browser aberto na tela de login para o usuário autenticar manualmente. */
+async function garantirTelaLogin(onStep) {
+  const ctx = await iniciarBrowser();
+  const page = await obterPaginaAutomacao(ctx);
+
+  if (await verificarSessaoAtiva()) {
+    return true;
+  }
+
+  const { loggedIn, login } = getLocators(page);
+  const naTelaLogin = await login.username.isVisible().catch(() => false);
+
+  if (!naTelaLogin && !(await loggedIn.searchPatient.isVisible().catch(() => false))) {
+    if (onStep) onStep('Abrindo Codonto para login...');
+    await page.goto(CODONTO_URL, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  }
+
+  return verificarSessaoAtiva();
+}
+
+module.exports = {
+  processarNoCodonto,
+  fecharBrowser,
+  iniciarBrowser,
+  verificarSessaoAtiva,
+  garantirTelaLogin,
+};
