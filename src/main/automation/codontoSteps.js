@@ -407,10 +407,18 @@ function tituloAlbum(restauracao) {
   return `Restauração ${texto}`;
 }
 
-function descricaoAlbum(tipoFoto) {
-  if (!tipoFoto) return '';
-  const label = TIPO_FOTO_MAP[tipoFoto] || String(tipoFoto).toLowerCase();
-  return `Tipo de foto ${label}`;
+function descricaoAlbum() {
+  const formatado = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date());
+
+  return formatado.replace(', ', ' ');
 }
 
 async function albumJaExiste(album, restauracao) {
@@ -443,15 +451,13 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
   await modalWait;
 
   const titulo = tituloAlbum(tarefa.restauracao);
-  const descricao = descricaoAlbum(tarefa.tipo_foto);
+  const descricao = descricaoAlbum();
 
   logStep(`Preenchendo título: ${titulo}`, onStep);
   await album.cadastroTitulo.fill(titulo);
 
-  if (descricao) {
-    logStep(`Preenchendo informações: ${descricao}`, onStep);
-    await album.cadastroDescricao.fill(descricao);
-  }
+  logStep(`Preenchendo informações: ${descricao}`, onStep);
+  await album.cadastroDescricao.fill(descricao);
 
   logStep('Salvando cadastro do álbum...', onStep);
   await album.salvarCadastro.click();
