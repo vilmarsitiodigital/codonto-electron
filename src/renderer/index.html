@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Codonto Sync</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 20px 24px 16px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      width: 36px;
+      height: 36px;
+      background: #3b82f6;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .header-title { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+    .header-sub   { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+    /* ── Status badge ── */
+    .status-bar {
+      padding: 12px 24px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge.ativo   { background: #052e16; color: #4ade80; border: 1px solid #16a34a; }
+    .badge.parado  { background: #1c0000; color: #f87171; border: 1px solid #dc2626; }
+    .badge.dot::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .btn-toggle {
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-toggle.parar  { background: #dc2626; color: #fff; }
+    .btn-toggle.parar:hover  { background: #b91c1c; }
+    .btn-toggle.iniciar { background: #16a34a; color: #fff; }
+    .btn-toggle.iniciar:hover { background: #15803d; }
+
+    /* ── Filtro de data ── */
+    .filter-bar {
+      padding: 10px 24px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .filter-bar label { white-space: nowrap; }
+    .filter-bar input[type="date"],
+    .filter-bar input[type="number"] {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .filter-bar input[type="number"] { width: 52px; }
+    .filter-bar input[type="date"]:disabled,
+    .filter-bar input[type="number"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    .filter-sep { color: #334155; margin: 0 2px; }
+    .filter-suffix { font-size: 11px; color: #64748b; }
+    .btn-sm {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #94a3b8;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .btn-sm:hover:not(:disabled) { background: #334155; color: #e2e8f0; }
+    .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Cards de resumo ── */
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      padding: 16px 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .card-num  { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+    .card-label { font-size: 10px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+    .card.verde  .card-num { color: #4ade80; }
+    .card.amarelo .card-num { color: #fbbf24; }
+    .card.vermelho .card-num { color: #f87171; }
+
+    /* ── Feed de eventos ── */
+    .feed-header {
+      padding: 0 24px 8px;
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .feed {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .feed::-webkit-scrollbar { width: 4px; }
+    .feed::-webkit-scrollbar-track { background: transparent; }
+    .feed::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+    .evento {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-left: 3px solid #334155;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      animation: slideIn .2s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .evento.sucesso { border-left-color: #16a34a; }
+    .evento.erro    { border-left-color: #dc2626; }
+    .evento.info    { border-left-color: #3b82f6; }
+    .evento.aviso   { border-left-color: #d97706; }
+
+    .evento-titulo { font-weight: 600; color: #f1f5f9; }
+    .evento-detalhe { color: #94a3b8; font-size: 11px; margin-top: 2px; white-space: pre-line; }
+    .evento-hora    { color: #475569; font-size: 10px; float: right; }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 10px 24px;
+      border-top: 1px solid #334155;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .btn-link {
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 11px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .btn-link:hover { color: #94a3b8; }
+
+    .vazio {
+      text-align: center;
+      color: #475569;
+      font-size: 12px;
+      padding: 24px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">🦷</div>
+    <div>
+      <div class="header-title">Codonto Sync</div>
+      <div class="header-sub">Agente WhatsApp → Codonto</div>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <span id="badge" class="badge ativo dot">Agente ativo</span>
+    <button id="btn-toggle" class="btn-toggle parar">Pausar</button>
+  </div>
+
+  <!-- Filtro de data -->
+  <div class="filter-bar">
+    <label for="input-desde">Processar tarefas desde:</label>
+    <input type="date" id="input-desde" />
+    <button type="button" id="btn-hoje" class="btn-sm">Hoje</button>
+    <span class="filter-sep">|</span>
+    <label for="input-intervalo">Polling a cada:</label>
+    <input type="number" id="input-intervalo" min="5" max="300" step="1" />
+    <span class="filter-suffix">seg</span>
+  </div>
+
+  <!-- Cards resumo -->
+  <div class="cards">
+    <div class="card verde">
+      <div class="card-num" id="total-concluidas">—</div>
+      <div class="card-label">Concluídas</div>
+    </div>
+    <div class="card amarelo">
+      <div class="card-num" id="total-pendentes">—</div>
+      <div class="card-label">Pendentes</div>
+    </div>
+    <div class="card vermelho">
+      <div class="card-num" id="total-erros">—</div>
+      <div class="card-label">Erros</div>
+    </div>
+  </div>
+
+  <!-- Feed de eventos -->
+  <div class="feed-header">Atividade recente</div>
+  <div class="feed" id="feed">
+    <div class="vazio">Aguardando tarefas...</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <button class="btn-link" id="btn-logs">Abrir pasta de logs</button>
+  </div>
+
+  <script>
+    let agentRodando = true;
+    const MAX_EVENTOS = 50;
+
+    const badge      = document.getElementById('badge');
+    const btnToggle  = document.getElementById('btn-toggle');
+    const feed       = document.getElementById('feed');
+    const inputDesde = document.getElementById('input-desde');
+    const btnHoje    = document.getElementById('btn-hoje');
+    const inputIntervalo = document.getElementById('input-intervalo');
+
+    // ── Atualiza UI do status ──────────────────────────────────
+    function setStatus(rodando) {
+      agentRodando = rodando;
+      if (rodando) {
+        badge.className = 'badge ativo dot';
+        badge.textContent = 'Agente ativo';
+        btnToggle.className = 'btn-toggle parar';
+        btnToggle.textContent = 'Pausar';
+      } else {
+        badge.className = 'badge parado';
+        badge.textContent = 'Agente parado';
+        btnToggle.className = 'btn-toggle iniciar';
+        btnToggle.textContent = 'Iniciar';
+      }
+    }
+
+    // ── Botão iniciar/pausar ───────────────────────────────────
+    btnToggle.addEventListener('click', async () => {
+      if (agentRodando) {
+        await window.codonto.pararAgente();
+        setStatus(false);
+      } else {
+        await window.codonto.iniciarAgente();
+        setStatus(true);
+      }
+    });
+
+    // ── Feed de eventos ───────────────────────────────────────
+    const tipoConfig = {
+      'tarefa:concluida':     { cls: 'sucesso', emoji: '✅', titulo: 'Foto salva no Codonto' },
+      'tarefa:erro':          { cls: 'erro',    emoji: '❌', titulo: 'Erro na tarefa' },
+      'tarefa:iniciando':     { cls: 'info',    emoji: '🔄', titulo: 'Processando tarefa' },
+      'tarefa:baixando_foto': { cls: 'info',    emoji: '📥', titulo: 'Baixando foto...' },
+      'tarefa:abrindo_codonto':{ cls: 'info',   emoji: '🌐', titulo: 'Abrindo Codonto...' },
+      'tarefa:passo':           { cls: 'info',    emoji: '▸',  titulo: 'Codonto' },
+      'tarefa:login_necessario':{ cls: 'aviso',   emoji: '🔐', titulo: 'Login necessário' },
+      'polling:vazio':        { cls: 'info',    emoji: '💤', titulo: 'Sem tarefas pendentes' },
+      'polling:encontradas':  { cls: 'aviso',   emoji: '📋', titulo: 'Tarefas encontradas' },
+      'fotos:recuperadas':    { cls: 'info',    emoji: '📷', titulo: 'Fotos recuperadas' },
+      'polling:erro':         { cls: 'erro',    emoji: '⚠️', titulo: 'Erro de conexão com API' },
+      'agente:parado':        { cls: 'aviso',   emoji: '⏸',  titulo: 'Agente pausado' },
+      'agente:iniciado':      { cls: 'sucesso', emoji: '▶️', titulo: 'Agente iniciado' },
+    };
+
+    function adicionarEvento(tipo, dados) {
+      // Remove placeholder "vazio"
+      const vazio = feed.querySelector('.vazio');
+      if (vazio) vazio.remove();
+
+      const cfg = tipoConfig[tipo] || { cls: 'info', emoji: '•', titulo: tipo };
+      const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      let detalhe = '';
+      if (dados.prontuario)  detalhe += `Prontuário: ${dados.prontuario}`;
+      if (dados.restauracao) detalhe += ` · ${dados.restauracao}`;
+      if (dados.tipo_foto)   detalhe += ` · ${dados.tipo_foto}`;
+      if (dados.erro)        detalhe = dados.erro;
+      if (dados.passo)       detalhe = dados.passo;
+      if (dados.quantidade)  detalhe = `${dados.quantidade} tarefa(s) desde ${dados.desde || 'hoje'}`;
+      else if (dados.recuperadas) detalhe = `${dados.recuperadas} foto(s) baixada(s) da Evolution`;
+      else if (dados.desde)  detalhe = `desde ${dados.desde}`;
+
+      const el = document.createElement('div');
+      el.className = `evento ${cfg.cls}`;
+      el.innerHTML = `
+        <span class="evento-hora">${hora}</span>
+        <div class="evento-titulo">${cfg.emoji} ${cfg.titulo}</div>
+        ${detalhe ? `<div class="evento-detalhe">${detalhe}</div>` : ''}
+      `;
+
+      feed.insertBefore(el, feed.firstChild);
+
+      // Limita o histórico
+      const eventos = feed.querySelectorAll('.evento');
+      if (eventos.length > MAX_EVENTOS) eventos[eventos.length - 1].remove();
+    }
+
+    // ── Ouve eventos do main process ─────────────────────────
+    window.codonto.onEvento(({ tipo, dados }) => {
+      if (tipo === 'polling:vazio') return;
+      if (tipo === 'tarefa:passo') return; // passos detalhados só no log
+      adicionarEvento(tipo, dados || {});
+      atualizarCards();
+    });
+
+    window.codonto.onStatusAgente(({ rodando }) => setStatus(rodando));
+
+    // ── Cards de resumo ───────────────────────────────────────
+    async function atualizarCards() {
+      const resumo = await window.codonto.buscarStatus();
+      const get = (s) => {
+        const item = resumo.find(r => r.status === s);
+        return item ? parseInt(item.total) : 0;
+      };
+      document.getElementById('total-concluidas').textContent = get('concluida');
+      document.getElementById('total-pendentes').textContent  = get('pendente');
+      document.getElementById('total-erros').textContent      = get('erro');
+    }
+
+    // ── Filtro de data ────────────────────────────────────────
+    async function carregarDesde() {
+      const { desde, fixoViaEnv } = await window.codonto.obterDesde();
+      inputDesde.value = desde;
+      inputDesde.disabled = fixoViaEnv;
+      btnHoje.disabled = fixoViaEnv;
+    }
+
+    inputDesde.addEventListener('change', async () => {
+      try {
+        await window.codonto.definirDesde(inputDesde.value);
+        await atualizarCards();
+      } catch (err) {
+        alert(err.message || 'Erro ao salvar data');
+        await carregarDesde();
+      }
+    });
+
+    btnHoje.addEventListener('click', async () => {
+      const { hoje } = await window.codonto.obterDesde();
+      inputDesde.value = hoje;
+      await window.codonto.definirDesde(hoje);
+      await atualizarCards();
+    });
+
+    // ── Intervalo de polling ───────────────────────────────────
+    async function carregarIntervalo() {
+      const { segundos, fixoViaEnv } = await window.codonto.obterPollInterval();
+      inputIntervalo.value = segundos;
+      inputIntervalo.disabled = fixoViaEnv;
+    }
+
+    inputIntervalo.addEventListener('change', async () => {
+      try {
+        await window.codonto.definirPollInterval(inputIntervalo.value);
+      } catch (err) {
+        alert(err.message || 'Erro ao salvar intervalo');
+        await carregarIntervalo();
+      }
+    });
+
+    // ── Logs ──────────────────────────────────────────────────
+    document.getElementById('btn-logs').addEventListener('click', () => {
+      window.codonto.abrirLogs();
+    });
+
+    // ── Init ──────────────────────────────────────────────────
+    (async () => {
+      const { rodando } = await window.codonto.statusAgente();
+      setStatus(rodando);
+      await carregarDesde();
+      await carregarIntervalo();
+      await atualizarCards();
+    })();
+
+    // Atualiza cards a cada 30s
+    setInterval(atualizarCards, 30000);
+  </script>
+</body>
+</html>

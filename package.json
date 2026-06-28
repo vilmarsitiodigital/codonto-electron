@@ -1,0 +1,40 @@
+{
+  "name": "codonto-sync",
+  "version": "1.0.0",
+  "description": "Agente local para sincronização WhatsApp → Codonto",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "br.artdental.codonto-sync",
+    "productName": "Codonto Sync",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "playwright": "^1.40.0",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1",
+    "node-schedule": "^2.1.1"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}

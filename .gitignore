@@ -1,0 +1,48 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (credenciais locais)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron / build
+dist/
+out/
+build/
+release/
+*.dmg
+*.exe
+*.msi
+*.blockmap
+*.yml
+!electron-builder.yml
+
+# Playwright / browser profile (dados de sessão locais)
+browser-profile/
+playwright-report/
+test-results/
+.playwright/
+
+# Config local do app (userData — se copiado para o repo)
+config.json
+
+# SO / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Cache
+.cache/
+.eslintcache
