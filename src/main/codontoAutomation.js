@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const { app } = require('electron');
 const logger = require('./logger');
-const { AutomationError } = require('./automation/AutomationError');
+const { AutomationError, BROWSER_BUSY_MESSAGE } = require('./automation/AutomationError');
 const { TIPO_FOTO_MAP, getLocators } = require('./automation/codontoSelectors');
 const {
   openSystem,
@@ -19,8 +19,13 @@ const {
 
 const CODONTO_URL = process.env.CODONTO_URL || 'https://co.aplicativo.net/';
 
+const PROFILE_LOCK_FILES = ['SingletonLock', 'SingletonCookie', 'lockfile', 'SingletonSocket'];
+const LAUNCH_RETRY_DELAY_MS = 1500;
+const LAUNCH_MAX_TENTATIVAS = 2;
+
 let context = null;
 let automationPage = null;
+let browserLaunchPromise = null;
 
 function getSlowMo() {
   const n = parseInt(process.env.PLAYWRIGHT_SLOW_MO || '0', 10);
@@ -42,28 +47,123 @@ function getBrowserProfileDir() {
   return path.join(base, 'browser-profile');
 }
 
-/**
- * Inicia o Chromium com perfil persistente — a sessão de login do usuário é preservada.
- */
-async function iniciarBrowser() {
-  if (context && !context.browser()?.isConnected()) {
-    context = null;
+function limparLocksPerfil(profileDir) {
+  for (const name of PROFILE_LOCK_FILES) {
+    const filePath = path.join(profileDir, name);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        logger.info('Lock do perfil do browser removido', { arquivo: name });
+      }
+    } catch (err) {
+      logger.warn('Não foi possível remover lock do perfil', { arquivo: name, error: err.message });
+    }
   }
-  if (context) return context;
+}
 
-  logger.info('Iniciando browser Chromium (perfil persistente)...');
+function isErroPerfilOcupado(err) {
+  const msg = String(err?.message || err).toLowerCase();
+  return (
+    msg.includes('has been closed') ||
+    msg.includes('target page') ||
+    msg.includes('browser has been closed') ||
+    msg.includes('sessão de navegador') ||
+    msg.includes('existing browser session') ||
+    msg.includes('user data directory is already in use') ||
+    msg.includes('profile appears to be in use')
+  );
+}
 
-  context = await chromium.launchPersistentContext(getBrowserProfileDir(), {
+function opcoesLaunch() {
+  return {
     headless: false,
     slowMo: getSlowMo(),
-    args: ['--start-maximized'],
+    args: [
+      '--start-maximized',
+      '--disable-features=DestroyProfileOnBrowserClose',
+    ],
     viewport: null,
     locale: 'pt-BR',
     timezoneId: 'America/Sao_Paulo',
-  });
+  };
+}
 
-  logger.info('Browser iniciado');
-  return context;
+async function aguardar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function launchPersistentContextComRetry(profileDir) {
+  let ultimoErro;
+
+  for (let tentativa = 1; tentativa <= LAUNCH_MAX_TENTATIVAS; tentativa++) {
+    try {
+      return await chromium.launchPersistentContext(profileDir, opcoesLaunch());
+    } catch (err) {
+      ultimoErro = err;
+      logger.warn('Falha ao iniciar Chromium', { tentativa, error: err.message });
+
+      if (tentativa < LAUNCH_MAX_TENTATIVAS && isErroPerfilOcupado(err)) {
+        limparLocksPerfil(profileDir);
+        await aguardar(LAUNCH_RETRY_DELAY_MS);
+        continue;
+      }
+      break;
+    }
+  }
+
+  throw ultimoErro;
+}
+
+/**
+ * Inicia o Chromium com perfil persistente — a sessão de login do usuário é preservada.
+ * Serializado (mutex) para evitar duplo launch no Windows.
+ */
+async function iniciarBrowser() {
+  if (context?.browser()?.isConnected()) {
+    return context;
+  }
+
+  if (context) {
+    context = null;
+    automationPage = null;
+  }
+
+  if (browserLaunchPromise) {
+    return browserLaunchPromise;
+  }
+
+  browserLaunchPromise = (async () => {
+    const profileDir = getBrowserProfileDir();
+
+    try {
+      fs.mkdirSync(profileDir, { recursive: true });
+      logger.info('Iniciando browser Chromium (perfil persistente)...', { profileDir });
+
+      const ctx = await launchPersistentContextComRetry(profileDir);
+      context = ctx;
+      logger.info('Browser iniciado');
+      return ctx;
+    } catch (err) {
+      context = null;
+      automationPage = null;
+
+      if (isErroPerfilOcupado(err)) {
+        throw new AutomationError(BROWSER_BUSY_MESSAGE, {
+          code: 'BROWSER_LAUNCH_FAILED',
+          etapa: 'browser',
+        });
+      }
+
+      throw new AutomationError(
+        `Não foi possível abrir o navegador do Codonto.\n\n${err.message}`,
+        { code: 'BROWSER_LAUNCH_FAILED', etapa: 'browser' }
+      );
+    } finally {
+      browserLaunchPromise = null;
+    }
+  })();
+
+  return browserLaunchPromise;
 }
 
 function prefixoTipoFoto(tipoFoto) {
@@ -98,11 +198,14 @@ function formatarErro(err) {
  * O usuário deve estar logado manualmente — nenhuma credencial é utilizada.
  */
 async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
-  const ctx = await iniciarBrowser();
-  const page = await obterPaginaAutomacao(ctx);
-  const fotoPath = salvarFotoTemp(fotoBase64, mimeType, tarefa);
+  let page;
+  let fotoPath;
 
   try {
+    const ctx = await iniciarBrowser();
+    page = await obterPaginaAutomacao(ctx);
+    fotoPath = salvarFotoTemp(fotoBase64, mimeType, tarefa);
+
     logger.info('Iniciando automação no Codonto', {
       prontuario: tarefa.prontuario,
       restauracao: tarefa.restauracao,
@@ -152,13 +255,17 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
 
     return resultado;
   } finally {
-    try {
-      fs.unlinkSync(fotoPath);
-    } catch (_) {}
+    if (fotoPath) {
+      try {
+        fs.unlinkSync(fotoPath);
+      } catch (_) {}
+    }
   }
 }
 
 async function fecharBrowser() {
+  browserLaunchPromise = null;
+
   if (context) {
     automationPage = null;
     await context.close();

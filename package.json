@@ -1,6 +1,6 @@
 {
   "name": "codonto-sync",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Agente local para sincronização WhatsApp → Codonto",
   "main": "src/main/index.js",
   "scripts": {
