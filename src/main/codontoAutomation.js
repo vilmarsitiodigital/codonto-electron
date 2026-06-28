@@ -73,9 +73,14 @@ function prefixoTipoFoto(tipoFoto) {
   return `${label}_`;
 }
 
-function salvarFotoTemp(base64, mimeType, tipoFoto) {
+function prefixoNomeArquivoFoto(tarefa) {
+  if (tarefa.nome_foto) return `${tarefa.nome_foto}_`;
+  return prefixoTipoFoto(tarefa.tipo_foto);
+}
+
+function salvarFotoTemp(base64, mimeType, tarefa) {
   const ext = mimeType.includes('png') ? 'png' : 'jpg';
-  const prefixo = prefixoTipoFoto(tipoFoto);
+  const prefixo = prefixoNomeArquivoFoto(tarefa);
   const tmpPath = path.join(os.tmpdir(), `${prefixo}codonto_foto_${Date.now()}.${ext}`);
   fs.writeFileSync(tmpPath, Buffer.from(base64, 'base64'));
   return tmpPath;
@@ -95,12 +100,14 @@ function formatarErro(err) {
 async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
   const ctx = await iniciarBrowser();
   const page = await obterPaginaAutomacao(ctx);
-  const fotoPath = salvarFotoTemp(fotoBase64, mimeType, tarefa.tipo_foto);
+  const fotoPath = salvarFotoTemp(fotoBase64, mimeType, tarefa);
 
   try {
     logger.info('Iniciando automação no Codonto', {
       prontuario: tarefa.prontuario,
       restauracao: tarefa.restauracao,
+      titulo_album: tarefa.titulo_album,
+      nome_foto: tarefa.nome_foto,
       tipo_foto: tarefa.tipo_foto,
     });
 
@@ -119,6 +126,8 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
     logger.info('Foto salva com sucesso no Codonto', {
       prontuario: tarefa.prontuario,
       restauracao: tarefa.restauracao,
+      titulo_album: tarefa.titulo_album,
+      nome_foto: tarefa.nome_foto,
     });
 
     return { sucesso: true };

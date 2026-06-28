@@ -63,6 +63,8 @@ async function processarTarefa(tarefa) {
     id: tarefa.id,
     prontuario: tarefa.prontuario,
     restauracao: tarefa.restauracao,
+    titulo_album: tarefa.titulo_album,
+    nome_foto: tarefa.nome_foto,
     tipo_foto: tarefa.tipo_foto,
   });
 

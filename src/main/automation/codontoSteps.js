@@ -235,23 +235,23 @@ function resolveIncluirButton(page, itemId, li, album) {
   return byToolbar.or(page.getByTitle('Incluir Novas Fotos').first());
 }
 
-async function selectRestauracao(page, restauracao, onStep) {
-  if (!restauracao) return null;
+async function selectRestauracao(page, albumRef, onStep) {
+  if (!albumRef) return null;
 
   const { album } = getLocators(page);
-  logStep(`Selecionando restauração ${restauracao}...`, onStep);
+  logStep(`Selecionando álbum ${albumRef.titulo}...`, onStep);
 
-  const li = album.restauracaoLi(restauracao);
+  const li = album.restauracaoLi(albumRef.codigo, { legado: albumRef.legado });
   await waitVisible(li, {
-    etapa: 'restauração',
-    mensagem: `Não foi possível localizar a restauração "${restauracao}".`,
+    etapa: 'álbum',
+    mensagem: `Não foi possível localizar o álbum "${albumRef.titulo}".`,
   });
 
   await dismissConsentModal(page, onStep);
   return li;
 }
 
-async function clickIncluirFotos(page, li, restauracao, onStep) {
+async function clickIncluirFotos(page, li, albumRef, onStep) {
   const { album } = getLocators(page);
 
   const itemId = await li.getAttribute('data-id', { timeout: 5000 }).catch(() => null);
@@ -264,7 +264,7 @@ async function clickIncluirFotos(page, li, restauracao, onStep) {
     await btnIncluir.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
   } catch {
     throw new AutomationError(
-      `Não foi possível localizar o botão "Incluir Novas Fotos" na restauração "${restauracao}".\n\n` +
+      `Não foi possível localizar o botão "Incluir Novas Fotos" no álbum "${albumRef.titulo}".\n\n` +
         'Verifique se o álbum está expandido.',
       { etapa: 'incluir fotos' }
     );
@@ -340,13 +340,15 @@ async function uploadPhoto(page, tarefa, fotoPath, onStep) {
   logStep('Preparando upload da foto...', onStep);
   await dismissConsentModal(page, onStep);
 
-  if (tarefa.restauracao) {
-    const li = album.restauracaoLi(tarefa.restauracao);
+  const albumRef = albumDaTarefa(tarefa);
+
+  if (albumRef) {
+    const li = album.restauracaoLi(albumRef.codigo, { legado: albumRef.legado });
     await waitVisible(li, {
-      etapa: 'restauração',
-      mensagem: `Não foi possível localizar a restauração "${tarefa.restauracao}".`,
+      etapa: 'álbum',
+      mensagem: `Não foi possível localizar o álbum "${albumRef.titulo}".`,
     });
-    await clickIncluirFotos(page, li, tarefa.restauracao, onStep);
+    await clickIncluirFotos(page, li, albumRef, onStep);
   } else {
     const btnIncluir = album.adicionarFoto.first();
     await waitVisible(btnIncluir, {
@@ -401,10 +403,22 @@ async function saveAlbum(page, onStep) {
   logStep('Automação concluída.', onStep);
 }
 
-function tituloAlbum(restauracao) {
+function tituloAlbumLegado(restauracao) {
   const texto = String(restauracao).trim();
   if (/^restauração/i.test(texto)) return texto;
   return `Restauração ${texto}`;
+}
+
+function albumDaTarefa(tarefa) {
+  if (tarefa.titulo_album) {
+    const titulo = String(tarefa.titulo_album).trim();
+    return { titulo, codigo: titulo, legado: false };
+  }
+  if (tarefa.restauracao) {
+    const codigo = String(tarefa.restauracao).trim();
+    return { titulo: tituloAlbumLegado(codigo), codigo, legado: true };
+  }
+  return null;
 }
 
 function descricaoAlbum() {
@@ -421,8 +435,8 @@ function descricaoAlbum() {
   return formatado.replace(', ', ' ');
 }
 
-async function albumJaExiste(album, restauracao) {
-  return album.restauracaoLi(restauracao)
+async function albumJaExiste(album, albumRef) {
+  return album.restauracaoLi(albumRef.codigo, { legado: albumRef.legado })
     .waitFor({ state: 'visible', timeout: 3000 })
     .then(() => true)
     .catch(() => false);
@@ -430,11 +444,12 @@ async function albumJaExiste(album, restauracao) {
 
 async function cadastrarNovoAlbum(page, tarefa, onStep) {
   const { album } = getLocators(page);
+  const albumRef = albumDaTarefa(tarefa);
 
-  if (!tarefa.restauracao) return;
+  if (!albumRef) return;
 
-  if (await albumJaExiste(album, tarefa.restauracao)) {
-    logStep('Álbum da restauração já existe.', onStep);
+  if (await albumJaExiste(album, albumRef)) {
+    logStep('Álbum já existe.', onStep);
     return;
   }
 
@@ -450,7 +465,7 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
   await btnNovo.click();
   await modalWait;
 
-  const titulo = tituloAlbum(tarefa.restauracao);
+  const titulo = albumRef.titulo;
   const descricao = descricaoAlbum();
 
   logStep(`Preenchendo título: ${titulo}`, onStep);
@@ -463,7 +478,7 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
   await album.salvarCadastro.click();
   await album.cadastroAlbumModal.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
 
-  await waitVisible(album.restauracaoLi(tarefa.restauracao), {
+  await waitVisible(album.restauracaoLi(albumRef.codigo, { legado: albumRef.legado }), {
     etapa: 'cadastro de álbum',
     mensagem: `O álbum "${titulo}" não apareceu na lista após salvar.`,
   });
@@ -474,13 +489,14 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
 async function createAlbum(page, tarefa, fotoPath, onStep) {
   const { album } = getLocators(page);
 
-  logStep('Localizando álbum da restauração...', onStep);
+  logStep('Localizando álbum...', onStep);
   await dismissConsentModal(page, onStep);
 
   await cadastrarNovoAlbum(page, tarefa, onStep);
 
-  if (tarefa.restauracao) {
-    await selectRestauracao(page, tarefa.restauracao, onStep);
+  const albumRef = albumDaTarefa(tarefa);
+  if (albumRef) {
+    await selectRestauracao(page, albumRef, onStep);
   }
 
   await uploadPhoto(page, tarefa, fotoPath, onStep);

@@ -71,9 +71,12 @@ function getLocators(page) {
         page.locator('span.album.pointer').filter({
           has: page.locator('.big-text.text-primary', { hasText: String(codigo) }),
         }).first(),
-      restauracaoLi: (codigo) => {
+      restauracaoLi: (codigo, opcoes = {}) => {
+        const legado = opcoes.legado !== false;
         const texto = escapeRegex(String(codigo).trim()).replace(/\s+/g, '\\s+');
-        const pattern = new RegExp(`Restauração\\s+${texto}`, 'i');
+        const pattern = legado
+          ? new RegExp(`Restauração\\s+${texto}`, 'i')
+          : new RegExp(`^${texto}$`, 'i');
         return page.locator('li[class*="expandable"]').filter({
           has: page.locator('span.big-text.text-primary', { hasText: pattern }),
         }).first();

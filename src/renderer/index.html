@@ -341,7 +341,9 @@
 
       let detalhe = '';
       if (dados.prontuario)  detalhe += `Prontuário: ${dados.prontuario}`;
-      if (dados.restauracao) detalhe += ` · ${dados.restauracao}`;
+      if (dados.titulo_album) detalhe += ` · ${dados.titulo_album}`;
+      else if (dados.restauracao) detalhe += ` · ${dados.restauracao}`;
+      if (dados.nome_foto) detalhe += ` · ${dados.nome_foto}`;
       if (dados.tipo_foto)   detalhe += ` · ${dados.tipo_foto}`;
       if (dados.erro)        detalhe = dados.erro;
       if (dados.passo)       detalhe = dados.passo;
