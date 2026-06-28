@@ -4,8 +4,17 @@ const { getLocators, TIPO_FOTO_MAP } = require('./codontoSelectors');
 
 const AUTH_CHECK_TIMEOUT = 20000;
 const DEFAULT_TIMEOUT = 15000;
+const NAV_TIMEOUT = 8000;
 const MODAL_TIMEOUT = 30000;
 const UPLOAD_TIMEOUT = 60000;
+
+async function waitAfterNav(page, locator, timeout = NAV_TIMEOUT) {
+  if (locator) {
+    await locator.waitFor({ state: 'visible', timeout }).catch(() => {});
+    return;
+  }
+  await page.waitForLoadState('load', { timeout }).catch(() => {});
+}
 
 function logStep(message, onStep) {
   logger.info(`[Codonto] ${message}`);
@@ -29,9 +38,16 @@ async function isVisible(locator) {
 }
 
 async function openSystem(page, url, onStep) {
+  const { loggedIn } = getLocators(page);
+
+  if (await isVisible(loggedIn.searchPatient)) {
+    logStep('Sessão já ativa — pulando abertura do sistema.', onStep);
+    return;
+  }
+
   logStep('Abrindo sistema...', onStep);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await waitAfterNav(page, loggedIn.searchPatient);
   logStep('Sistema carregado.', onStep);
 }
 
@@ -86,7 +102,7 @@ async function dismissConsentModal(page, onStep) {
 }
 
 async function searchPatient(page, prontuario, onStep) {
-  const { loggedIn, patient } = getLocators(page);
+  const { loggedIn, patient, clinical } = getLocators(page);
 
   logStep(`Pesquisando paciente ${prontuario}...`, onStep);
 
@@ -121,13 +137,18 @@ async function searchPatient(page, prontuario, onStep) {
   });
 
   await item.click();
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await waitAfterNav(page, clinical.dadosClinicos);
 
   logStep('Paciente localizado.', onStep);
 }
 
 async function openClinicalData(page, onStep) {
-  const { clinical } = getLocators(page);
+  const { clinical, album } = getLocators(page);
+
+  if (await isVisible(album.abasAlbum)) {
+    logStep('Dados Clínicos já abertos.', onStep);
+    return;
+  }
 
   logStep('Abrindo Dados Clínicos...', onStep);
   await dismissConsentModal(page, onStep);
@@ -140,12 +161,20 @@ async function openClinicalData(page, onStep) {
   });
 
   await link.click();
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await waitAfterNav(page, album.abasAlbum);
   await dismissConsentModal(page, onStep);
 }
 
 async function openPhotoAlbum(page, onStep) {
   const { album } = getLocators(page);
+
+  const jaNaAba = await album.novoAlbum.isVisible().catch(() => false)
+    || await page.locator('li[class*="expandable"]').first().isVisible().catch(() => false);
+
+  if (jaNaAba) {
+    logStep('Álbuns já abertos.', onStep);
+    return;
+  }
 
   logStep('Abrindo Álbuns...', onStep);
   await dismissConsentModal(page, onStep);
@@ -158,10 +187,10 @@ async function openPhotoAlbum(page, onStep) {
   });
 
   await aba.click();
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  await page.locator('li[class*="expandable"]').first()
-    .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
-    .catch(() => {});
+  await Promise.race([
+    album.novoAlbum.waitFor({ state: 'visible', timeout: NAV_TIMEOUT }),
+    page.locator('li[class*="expandable"]').first().waitFor({ state: 'visible', timeout: NAV_TIMEOUT }),
+  ]).catch(() => {});
   await dismissConsentModal(page, onStep);
 }
 
@@ -258,17 +287,14 @@ async function clickIncluirFotos(page, li, restauracao, onStep) {
 }
 
 async function waitUploadModal(page, album, onStep) {
-  logStep('Aguardando modal de upload...', onStep);
-
-  await album.uploadModal.waitFor({ state: 'visible', timeout: MODAL_TIMEOUT });
-  await album.dropZone.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).catch(() => {});
-
   const webcamAtiva = await album.uploadModal.locator('#BtnSourceWebcam.is--active')
     .isVisible()
     .catch(() => false);
   if (webcamAtiva) {
     await album.uploadTabArquivos.click().catch(() => {});
   }
+
+  await album.dropZone.waitFor({ state: 'visible', timeout: NAV_TIMEOUT }).catch(() => {});
 }
 
 async function setPhotoFile(page, album, fotoPath, onStep) {
@@ -370,10 +396,8 @@ async function saveAlbum(page, onStep) {
   });
 
   await alvo.click();
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-
   await album.uploadModal.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT }).catch(() => {});
-  await album.sucesso.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).catch(() => {});
+  await album.sucesso.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
   logStep('Automação concluída.', onStep);
 }
 
@@ -432,7 +456,6 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
   logStep('Salvando cadastro do álbum...', onStep);
   await album.salvarCadastro.click();
   await album.cadastroAlbumModal.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
   await waitVisible(album.restauracaoLi(tarefa.restauracao), {
     etapa: 'cadastro de álbum',

@@ -6,6 +6,7 @@ const os = require('os');
 const { app } = require('electron');
 const logger = require('./logger');
 const { AutomationError } = require('./automation/AutomationError');
+const { TIPO_FOTO_MAP } = require('./automation/codontoSelectors');
 const {
   openSystem,
   ensureLogged,
@@ -19,6 +20,22 @@ const {
 const CODONTO_URL = process.env.CODONTO_URL || 'https://co.aplicativo.net/';
 
 let context = null;
+let automationPage = null;
+
+function getSlowMo() {
+  const n = parseInt(process.env.PLAYWRIGHT_SLOW_MO || '0', 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+async function obterPaginaAutomacao(ctx) {
+  if (automationPage && !automationPage.isClosed()) {
+    return automationPage;
+  }
+
+  const aberta = ctx.pages().find((p) => !p.isClosed());
+  automationPage = aberta || await ctx.newPage();
+  return automationPage;
+}
 
 function getBrowserProfileDir() {
   const base = app?.getPath('userData') || os.tmpdir();
@@ -38,7 +55,7 @@ async function iniciarBrowser() {
 
   context = await chromium.launchPersistentContext(getBrowserProfileDir(), {
     headless: false,
-    slowMo: 200,
+    slowMo: getSlowMo(),
     args: ['--start-maximized'],
     viewport: null,
     locale: 'pt-BR',
@@ -49,9 +66,17 @@ async function iniciarBrowser() {
   return context;
 }
 
-function salvarFotoTemp(base64, mimeType) {
+function prefixoTipoFoto(tipoFoto) {
+  if (!tipoFoto) return '';
+  const normalizado = String(tipoFoto).toUpperCase();
+  const label = TIPO_FOTO_MAP[normalizado] || normalizado.toLowerCase();
+  return `${label}_`;
+}
+
+function salvarFotoTemp(base64, mimeType, tipoFoto) {
   const ext = mimeType.includes('png') ? 'png' : 'jpg';
-  const tmpPath = path.join(os.tmpdir(), `codonto_foto_${Date.now()}.${ext}`);
+  const prefixo = prefixoTipoFoto(tipoFoto);
+  const tmpPath = path.join(os.tmpdir(), `${prefixo}codonto_foto_${Date.now()}.${ext}`);
   fs.writeFileSync(tmpPath, Buffer.from(base64, 'base64'));
   return tmpPath;
 }
@@ -69,8 +94,8 @@ function formatarErro(err) {
  */
 async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
   const ctx = await iniciarBrowser();
-  const page = await ctx.newPage();
-  const fotoPath = salvarFotoTemp(fotoBase64, mimeType);
+  const page = await obterPaginaAutomacao(ctx);
+  const fotoPath = salvarFotoTemp(fotoBase64, mimeType, tarefa.tipo_foto);
 
   try {
     logger.info('Iniciando automação no Codonto', {
@@ -118,7 +143,6 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
 
     return resultado;
   } finally {
-    await page.close();
     try {
       fs.unlinkSync(fotoPath);
     } catch (_) {}
@@ -127,6 +151,7 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
 
 async function fecharBrowser() {
   if (context) {
+    automationPage = null;
     await context.close();
     context = null;
     logger.info('Browser fechado');
