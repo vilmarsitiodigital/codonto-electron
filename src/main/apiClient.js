@@ -32,6 +32,15 @@ async function baixarFoto(tarefaId) {
 }
 
 /**
+ * Verifica se a tarefa é duplicada de uma concluída hoje
+ * GET /tarefas/:id/duplicidade
+ */
+async function verificarDuplicidade(tarefaId) {
+  const { data } = await api.get(`/tarefas/${tarefaId}/duplicidade`);
+  return data;
+}
+
+/**
  * Atualiza o status de uma tarefa
  * PATCH /tarefas/:id
  */
@@ -68,6 +77,7 @@ async function reprocessarSemFoto(desde) {
 module.exports = {
   buscarTarefasPendentes,
   baixarFoto,
+  verificarDuplicidade,
   atualizarTarefa,
   buscarStatus,
   reprocessarSemFoto,

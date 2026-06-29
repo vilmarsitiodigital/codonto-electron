@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { buscarTarefasPendentes, baixarFoto, atualizarTarefa, reprocessarSemFoto } = require('./apiClient');
+const { buscarTarefasPendentes, baixarFoto, verificarDuplicidade, atualizarTarefa, reprocessarSemFoto } = require('./apiClient');
 const {
   processarNoCodonto,
   verificarSessaoAtiva,
@@ -103,7 +103,7 @@ function atualizarIntervalo() {
 
 /**
  * Processa uma única tarefa do início ao fim.
- * @returns {'ok'|'login_required'|'erro'}
+ * @returns {'ok'|'login_required'|'erro'|'duplicada'}
  */
 async function processarTarefa(tarefa) {
   emitir('tarefa:iniciando', {
@@ -114,6 +114,30 @@ async function processarTarefa(tarefa) {
     nome_foto: tarefa.nome_foto,
     tipo_foto: tarefa.tipo_foto,
   });
+
+  try {
+    const duplicidade = await verificarDuplicidade(tarefa.id);
+    if (duplicidade.duplicada) {
+      logger.info('Tarefa ignorada — já concluída hoje com os mesmos dados', {
+        id: tarefa.id,
+        prontuario: tarefa.prontuario,
+        tarefaExistenteId: duplicidade.tarefa_existente_id,
+        concluido_em: duplicidade.concluido_em,
+      });
+      await atualizarTarefa(tarefa.id, 'duplicada');
+      emitir('tarefa:duplicada', {
+        id: tarefa.id,
+        prontuario: tarefa.prontuario,
+        concluido_em: duplicidade.concluido_em,
+      });
+      return 'duplicada';
+    }
+  } catch (err) {
+    logger.warn('Falha ao verificar duplicidade — prosseguindo com processamento', {
+      id: tarefa.id,
+      error: err.message,
+    });
+  }
 
   // Marca como "processando" para não ser pega por outro agente
   try {

@@ -323,6 +323,7 @@
     // ── Feed de eventos ───────────────────────────────────────
     const tipoConfig = {
       'tarefa:concluida':     { cls: 'sucesso', emoji: '✅', titulo: 'Foto salva no Codonto' },
+      'tarefa:duplicada':     { cls: 'aviso',   emoji: '❎', titulo: 'Já concluída hoje — ignorada' },
       'tarefa:erro':          { cls: 'erro',    emoji: '❌', titulo: 'Erro na tarefa' },
       'tarefa:iniciando':     { cls: 'info',    emoji: '🔄', titulo: 'Processando tarefa' },
       'tarefa:baixando_foto': { cls: 'info',    emoji: '📥', titulo: 'Baixando foto...' },
@@ -353,6 +354,14 @@
       else if (dados.restauracao) detalhe += ` · ${dados.restauracao}`;
       if (dados.nome_foto) detalhe += ` · ${dados.nome_foto}`;
       if (dados.tipo_foto)   detalhe += ` · ${dados.tipo_foto}`;
+      if (dados.concluido_em) {
+        const hora = new Date(dados.concluido_em).toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        detalhe += ` · concluída às ${hora}`;
+      }
       if (dados.erro)        detalhe = dados.erro;
       if (dados.passo)       detalhe = dados.passo;
       if (dados.quantidade)  detalhe = `${dados.quantidade} tarefa(s) desde ${dados.desde || 'hoje'}`;

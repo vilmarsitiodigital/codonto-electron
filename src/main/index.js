@@ -174,8 +174,10 @@ worker.onEvento((tipo, dados) => {
     tray?.setToolTip('✅ Login detectado — retomando tarefas');
   } else if (tipo === 'tarefa:erro') {
     tray?.setToolTip(`❌ Erro na última tarefa`);
+  } else if (tipo === 'tarefa:duplicada') {
+    tray?.setToolTip(`❎ Prontuário ${dados.prontuario} — já concluída hoje`);
   }
-  if (['tarefa:concluida', 'tarefa:login_necessario', 'agente:aguardando_login', 'agente:login_ok', 'tarefa:erro', 'agente:iniciado', 'agente:parado'].includes(tipo)) {
+  if (['tarefa:concluida', 'tarefa:duplicada', 'tarefa:login_necessario', 'agente:aguardando_login', 'agente:login_ok', 'tarefa:erro', 'agente:iniciado', 'agente:parado'].includes(tipo)) {
     atualizarMenuTray();
   }
 });
