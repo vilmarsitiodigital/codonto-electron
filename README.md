@@ -18,7 +18,9 @@ codonto-electron/
 │   └── renderer/
 │       └── index.html          # Interface visual do agente
 ├── assets/
-│   └── icon.png                # Ícone do app (512x512 PNG)
+│   ├── icon.png                # Ícone do app (256x256 PNG, bandeja e janela)
+│   ├── icon.ico                # Build Windows
+│   └── icon.icns               # Build macOS
 ├── .env                        # Configurações locais
 └── package.json
 ```

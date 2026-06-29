@@ -12,6 +12,8 @@ let tray = null;
 
 // ─── Janela principal ─────────────────────────────────────────
 function criarJanela() {
+  const iconPath = path.join(__dirname, '../../assets/icon.png');
+
   mainWindow = new BrowserWindow({
     width: 480,
     height: 640,
@@ -19,6 +21,7 @@ function criarJanela() {
     minHeight: 500,
     resizable: true,
     title: 'Codonto Sync',
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
