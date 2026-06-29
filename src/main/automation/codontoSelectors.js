@@ -32,7 +32,9 @@ function getLocators(page) {
 
   return {
     loggedIn: {
-      searchPatient: page.getByRole('textbox', { name: /pesquisar paciente/i }),
+      searchPatient: page.getByRole('textbox', { name: /pesquisar paciente/i })
+        .or(page.getByPlaceholder(/pesquisar paciente/i))
+        .or(page.locator('input[placeholder*="Pesquisar" i], input[placeholder*="paciente" i]').first()),
       sidebar: page.locator('nav, aside, [class*="sidebar"], [class*="menu-lateral"]').first(),
     },
     login: {
@@ -41,6 +43,19 @@ function getLocators(page) {
     },
     consent: {
       confirmButton: page.locator('.swal2-confirm.swal-consent-confirm'),
+    },
+    reminders: {
+      popup: page.locator('.swal2-popup.swal2-show').filter({
+        has: page.locator('#swal2-title', { hasText: /alerta de lembretes/i }),
+      }),
+      confirmButton: page.locator('.swal2-popup.swal2-show')
+        .filter({ has: page.locator('#swal2-title', { hasText: /alerta de lembretes/i }) })
+        .locator('button.swal2-confirm'),
+    },
+    modals: {
+      visiblePopup: page.locator('.swal2-popup.swal2-show'),
+      blockingOverlay: page.locator('.swal2-popup.swal2-show'),
+      genericConfirm: page.locator('.swal2-popup.swal2-show button.swal2-confirm').first(),
     },
     patient: {
       dropdown: page.locator('.sc-dropdown--open'),

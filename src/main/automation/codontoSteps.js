@@ -2,11 +2,14 @@ const logger = require('../logger');
 const { AutomationError, LOGIN_REQUIRED_MESSAGE } = require('./AutomationError');
 const { getLocators, TIPO_FOTO_MAP } = require('./codontoSelectors');
 
-const AUTH_CHECK_TIMEOUT = 20000;
+const AUTH_CHECK_TIMEOUT = 30000;
 const DEFAULT_TIMEOUT = 15000;
 const NAV_TIMEOUT = 8000;
 const MODAL_TIMEOUT = 30000;
 const UPLOAD_TIMEOUT = 60000;
+const RESET_TIMEOUT = 30000;
+const SEARCH_FIELD_TIMEOUT = 45000;
+const SEARCH_RETRY_INTERVAL_MS = 500;
 
 async function waitAfterNav(page, locator, timeout = NAV_TIMEOUT) {
   if (locator) {
@@ -37,32 +40,72 @@ async function isVisible(locator) {
   return locator.isVisible().catch(() => false);
 }
 
-async function openSystem(page, url, onStep) {
-  const { loggedIn } = getLocators(page);
-
-  if (await isVisible(loggedIn.searchPatient)) {
-    logStep('Sessão já ativa — pulando abertura do sistema.', onStep);
-    return;
-  }
-
-  logStep('Abrindo sistema...', onStep);
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await waitAfterNav(page, loggedIn.searchPatient);
-  logStep('Sistema carregado.', onStep);
+async function aguardar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function ensureLogged(page, onStep) {
-  const { loggedIn, login } = getLocators(page);
+function candidatosCampoBusca(page) {
+  const { loggedIn } = getLocators(page);
+  return [
+    page.getByRole('textbox', { name: /pesquisar paciente/i }),
+    page.getByPlaceholder(/pesquisar paciente/i),
+    page.getByLabel(/pesquisar paciente/i),
+    page.locator('input[placeholder*="Pesquisar" i], input[placeholder*="paciente" i]'),
+    page.locator('.sc-dropdown input[type="text"], .sc-dropdown input:not([type="hidden"])'),
+    page.locator('[class*="search"] input[type="text"], [id*="search" i] input'),
+    loggedIn.searchPatient,
+  ];
+}
 
-  logStep('Verificando autenticação...', onStep);
+async function encontrarCampoBuscaPaciente(page) {
+  for (const candidato of candidatosCampoBusca(page)) {
+    const visivel = await isVisible(candidato);
+    const habilitado = visivel && await candidato.isEnabled().catch(() => false);
+    if (visivel && habilitado) {
+      return candidato;
+    }
+  }
+  return null;
+}
 
-  const deadline = Date.now() + AUTH_CHECK_TIMEOUT;
+async function dismissAnyBlockingSwal(page, onStep) {
+  const { modals } = getLocators(page);
+  const popup = modals.visiblePopup;
+
+  if (!(await isVisible(popup))) {
+    return false;
+  }
+
+  const confirm = popup.locator('button.swal2-confirm').first();
+  if (await isVisible(confirm)) {
+    const texto = await confirm.textContent().catch(() => '');
+    const descricao = texto?.trim() ? `Modal: "${texto.trim()}"` : 'Modal do sistema';
+    return dismissSwalModal(page, confirm, descricao, onStep);
+  }
+
+  const fechar = popup.locator('button.swal2-close').first();
+  if (await isVisible(fechar)) {
+    logStep('Fechando modal do sistema...', onStep);
+    await fechar.click();
+    await popup.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Aguarda o campo de busca estar visível, sem overlay bloqueando e pronto para digitação.
+ * Fecha modais (consentimento, lembretes) durante a espera — comum após reload.
+ */
+async function aguardarCampoBuscaPaciente(page, onStep, timeout = SEARCH_FIELD_TIMEOUT, url = null) {
+  const { login } = getLocators(page);
+  const deadline = Date.now() + timeout;
+  let recarregou = false;
 
   while (Date.now() < deadline) {
-    if (await isVisible(loggedIn.searchPatient)) {
-      logStep('Usuário autenticado.', onStep);
-      return;
-    }
+    await dismissConsentModal(page, onStep);
+    await dismissAnyBlockingSwal(page, onStep);
 
     if (await isVisible(login.username)) {
       throw new AutomationError(LOGIN_REQUIRED_MESSAGE, {
@@ -71,51 +114,137 @@ async function ensureLogged(page, onStep) {
       });
     }
 
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await loggedIn.searchPatient.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
-  }
+    const campo = await encontrarCampoBuscaPaciente(page);
+    if (campo) {
+      return campo;
+    }
 
-  if (await isVisible(login.username)) {
-    throw new AutomationError(LOGIN_REQUIRED_MESSAGE, {
-      code: 'LOGIN_REQUIRED',
-      etapa: 'autenticação',
-    });
+    const restante = deadline - Date.now();
+    if (!recarregou && url && restante < timeout / 2) {
+      recarregou = true;
+      logStep('Campo de busca não encontrado — recarregando página...', onStep);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESET_TIMEOUT }).catch(() => {});
+      await page.waitForLoadState('load', { timeout: RESET_TIMEOUT }).catch(() => {});
+    }
+
+    await aguardar(SEARCH_RETRY_INTERVAL_MS);
   }
 
   throw new AutomationError(
     'Não foi possível localizar o campo "Pesquisar Paciente".\n\n' +
-      'Verifique se o usuário continua logado no sistema.',
-    { etapa: 'autenticação' }
+      'Verifique se o usuário continua logado e se nenhum modal está bloqueando a tela.',
+    { etapa: 'pesquisa de paciente' }
   );
 }
 
-async function dismissConsentModal(page, onStep) {
-  const { consent } = getLocators(page);
-  const visible = await isVisible(consent.confirmButton);
+async function preencherCampoBusca(page, prontuario, onStep) {
+  const valor = String(prontuario);
+  const deadline = Date.now() + SEARCH_FIELD_TIMEOUT;
+  let ultimoErro;
 
-  if (!visible) return;
+  while (Date.now() < deadline) {
+    await dismissConsentModal(page, onStep);
+    await dismissAnyBlockingSwal(page, onStep);
 
-  logStep('Modal de consentimento encontrado.', onStep);
-  await consent.confirmButton.click();
-  await consent.confirmButton.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    try {
+      const atualizado = await aguardarCampoBuscaPaciente(page, onStep, 8000);
+      await atualizado.fill(valor, { timeout: 8000 });
+      return;
+    } catch (err) {
+      ultimoErro = err;
+      if (err instanceof AutomationError && err.code === 'LOGIN_REQUIRED') {
+        throw err;
+      }
+      await aguardar(SEARCH_RETRY_INTERVAL_MS);
+    }
+  }
+
+  throw new AutomationError(
+    ultimoErro?.message ||
+      'Não foi possível preencher o campo "Pesquisar Paciente".\n\n' +
+        'A tela pode estar bloqueada por um modal ou ainda carregando.',
+    { etapa: 'pesquisa de paciente' }
+  );
+}
+
+/**
+ * Volta à tela inicial de busca de pacientes, isolando o próximo prontuário.
+ * Chamado ao final de cada processamento — sem networkidle (instável em SPAs).
+ */
+async function reinicializarPagina(page, url, onStep) {
+  logStep('Reinicializando página para próximo processamento...', onStep);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: RESET_TIMEOUT });
+  await page.waitForLoadState('load', { timeout: RESET_TIMEOUT }).catch(() => {});
+
+  await aguardarCampoBuscaPaciente(page, onStep, RESET_TIMEOUT, url);
+  logStep('Página pronta para novo processamento.', onStep);
+}
+
+async function openSystem(page, url, onStep) {
+  await dismissConsentModal(page, onStep);
+  await dismissAnyBlockingSwal(page, onStep);
+
+  const campo = await encontrarCampoBuscaPaciente(page);
+  if (campo) {
+    logStep('Sessão já ativa — tela de busca disponível.', onStep);
+    return;
+  }
+
+  logStep('Abrindo sistema...', onStep);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForLoadState('load', { timeout: RESET_TIMEOUT }).catch(() => {});
+  await aguardarCampoBuscaPaciente(page, onStep, SEARCH_FIELD_TIMEOUT, url);
+  logStep('Sistema carregado.', onStep);
+}
+
+async function ensureLogged(page, onStep, url = null) {
+  logStep('Verificando autenticação...', onStep);
+  await aguardarCampoBuscaPaciente(page, onStep, AUTH_CHECK_TIMEOUT, url);
+  logStep('Usuário autenticado.', onStep);
+}
+
+async function dismissSwalModal(page, confirmButton, descricao, onStep) {
+  const visible = await isVisible(confirmButton);
+  if (!visible) return false;
+
+  logStep(`${descricao} encontrado.`, onStep);
+  await confirmButton.click();
+  await confirmButton.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+  await page.locator('.swal2-container.swal2-shown, .swal2-container.swal2-backdrop-show')
+    .waitFor({ state: 'hidden', timeout: 5000 })
+    .catch(() => {});
   logStep('Modal fechado.', onStep);
+  return true;
+}
+
+async function dismissConsentModal(page, onStep) {
+  const { consent, reminders } = getLocators(page);
+
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const fechouConsent = await dismissSwalModal(
+      page,
+      consent.confirmButton,
+      'Modal de consentimento',
+      onStep
+    );
+    const fechouLembretes = await dismissSwalModal(
+      page,
+      reminders.confirmButton,
+      'Alerta de Lembretes',
+      onStep
+    );
+    const fechouGenerico = await dismissAnyBlockingSwal(page, onStep);
+
+    if (!fechouConsent && !fechouLembretes && !fechouGenerico) break;
+  }
 }
 
 async function searchPatient(page, prontuario, onStep) {
-  const { loggedIn, patient, clinical } = getLocators(page);
+  const { patient, clinical } = getLocators(page);
 
   logStep(`Pesquisando paciente ${prontuario}...`, onStep);
 
-  const campo = await waitVisible(loggedIn.searchPatient, {
-    etapa: 'pesquisa de paciente',
-    mensagem:
-      'Não foi possível localizar o campo "Pesquisar Paciente".\n\n' +
-      'Verifique se o usuário continua logado.',
-  });
-
-  await dismissConsentModal(page, onStep);
-
-  await campo.fill(String(prontuario));
+  await preencherCampoBusca(page, prontuario, onStep);
 
   await waitVisible(patient.dropdown, {
     etapa: 'dropdown de busca',
@@ -145,11 +274,6 @@ async function searchPatient(page, prontuario, onStep) {
 async function openClinicalData(page, onStep) {
   const { clinical, album } = getLocators(page);
 
-  if (await isVisible(album.abasAlbum)) {
-    logStep('Dados Clínicos já abertos.', onStep);
-    return;
-  }
-
   logStep('Abrindo Dados Clínicos...', onStep);
   await dismissConsentModal(page, onStep);
 
@@ -167,14 +291,6 @@ async function openClinicalData(page, onStep) {
 
 async function openPhotoAlbum(page, onStep) {
   const { album } = getLocators(page);
-
-  const jaNaAba = await album.novoAlbum.isVisible().catch(() => false)
-    || await page.locator('li[class*="expandable"]').first().isVisible().catch(() => false);
-
-  if (jaNaAba) {
-    logStep('Álbuns já abertos.', onStep);
-    return;
-  }
 
   logStep('Abrindo Álbuns...', onStep);
   await dismissConsentModal(page, onStep);
@@ -505,6 +621,7 @@ async function createAlbum(page, tarefa, fotoPath, onStep) {
 
 module.exports = {
   openSystem,
+  reinicializarPagina,
   ensureLogged,
   dismissConsentModal,
   searchPatient,

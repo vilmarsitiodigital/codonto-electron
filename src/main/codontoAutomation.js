@@ -9,6 +9,7 @@ const { AutomationError, BROWSER_BUSY_MESSAGE } = require('./automation/Automati
 const { TIPO_FOTO_MAP, getLocators } = require('./automation/codontoSelectors');
 const {
   openSystem,
+  reinicializarPagina,
   ensureLogged,
   dismissConsentModal,
   searchPatient,
@@ -200,6 +201,7 @@ function formatarErro(err) {
 async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
   let page;
   let fotoPath;
+  let processamentoConcluido = false;
 
   try {
     const ctx = await iniciarBrowser();
@@ -216,7 +218,7 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
 
     await openSystem(page, CODONTO_URL, onStep);
     await dismissConsentModal(page, onStep);
-    await ensureLogged(page, onStep);
+    await ensureLogged(page, onStep, CODONTO_URL);
     await dismissConsentModal(page, onStep);
     await searchPatient(page, tarefa.prontuario, onStep);
     await dismissConsentModal(page, onStep);
@@ -233,6 +235,7 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
       nome_foto: tarefa.nome_foto,
     });
 
+    processamentoConcluido = true;
     return { sucesso: true };
   } catch (err) {
     const resultado = formatarErro(err);
@@ -259,6 +262,18 @@ async function processarNoCodonto(tarefa, fotoBase64, mimeType, onStep) {
       try {
         fs.unlinkSync(fotoPath);
       } catch (_) {}
+    }
+
+    if (page && !page.isClosed()) {
+      try {
+        await reinicializarPagina(page, CODONTO_URL, onStep);
+      } catch (err) {
+        logger.warn('Falha ao reinicializar página após processamento', {
+          error: err.message,
+          prontuario: tarefa.prontuario,
+          concluido: processamentoConcluido,
+        });
+      }
     }
   }
 }
