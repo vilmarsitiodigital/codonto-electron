@@ -14,9 +14,13 @@ const TIPO_FOTO_MAP = {
   CONTROLE: 'controle',
 };
 
+function cadastroAlbumFormRoot(page) {
+  return page.locator('form#FormAlbum');
+}
+
 function cadastroAlbumModalRoot(page) {
   return page.locator('div.modal').filter({
-    has: page.locator('.modal-bar h3', { hasText: /cadastrar álbum de fotografias/i }),
+    has: page.locator('form#FormAlbum'),
   }).last();
 }
 
@@ -28,6 +32,7 @@ function uploadModalRoot(page) {
 
 function getLocators(page) {
   const uploadModal = uploadModalRoot(page);
+  const cadastroAlbumForm = cadastroAlbumFormRoot(page);
   const cadastroAlbumModal = cadastroAlbumModalRoot(page);
 
   return {
@@ -78,10 +83,13 @@ function getLocators(page) {
         .or(page.locator('#MainAdd'))
         .or(page.getByRole('link', { name: /novo álbum/i }))
         .or(page.locator('a.button.icon-plus-round[title*="Album"]')),
+      cadastroAlbumForm,
       cadastroAlbumModal,
-      cadastroTitulo: cadastroAlbumModal.locator('#Titulo'),
-      cadastroDescricao: cadastroAlbumModal.locator('#Descricao'),
-      salvarCadastro: cadastroAlbumModal.locator('button.btn-primary').filter({ hasText: /salvar cadastro/i }),
+      cadastroTitulo: cadastroAlbumForm.locator('#Titulo'),
+      cadastroDescricao: cadastroAlbumForm.locator('#Descricao'),
+      salvarCadastro: cadastroAlbumModal
+        .locator('button.btn-primary').filter({ hasText: /salvar cadastro/i })
+        .or(page.getByRole('button', { name: /salvar cadastro/i })),
       restauracaoAlbum: (codigo) =>
         page.locator('span.album.pointer').filter({
           has: page.locator('.big-text.text-primary', { hasText: String(codigo) }),

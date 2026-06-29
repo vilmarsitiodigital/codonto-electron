@@ -558,6 +558,29 @@ async function albumJaExiste(album, albumRef) {
     .catch(() => false);
 }
 
+async function preencherCampoAlbum(locator, valor, { etapa, mensagem, onStep, rotulo }) {
+  const texto = String(valor);
+  await waitVisible(locator, {
+    etapa,
+    mensagem: mensagem || `Não foi possível localizar o campo "${rotulo}".`,
+  });
+
+  await locator.click();
+  await locator.fill('');
+  await locator.fill(texto);
+
+  const atual = await locator.inputValue().catch(() => '');
+  if (atual !== texto) {
+    throw new AutomationError(
+      `Não foi possível preencher o campo "${rotulo}".\n\n` +
+        `Esperado: "${texto}"\nObtido: "${atual}"`,
+      { etapa }
+    );
+  }
+
+  logStep(`${rotulo} preenchido: ${texto}`, onStep);
+}
+
 async function cadastrarNovoAlbum(page, tarefa, onStep) {
   const { album } = getLocators(page);
   const albumRef = albumDaTarefa(tarefa);
@@ -577,22 +600,32 @@ async function cadastrarNovoAlbum(page, tarefa, onStep) {
     mensagem: 'Não foi possível localizar o botão "Novo Álbum" (#MainAdd).',
   });
 
-  const modalWait = album.cadastroAlbumModal.waitFor({ state: 'visible', timeout: MODAL_TIMEOUT });
+  const formWait = album.cadastroAlbumForm.waitFor({ state: 'visible', timeout: MODAL_TIMEOUT });
   await btnNovo.click();
-  await modalWait;
+  await formWait;
 
-  const titulo = albumRef.titulo;
+  const titulo = albumRef.titulo.slice(0, 40);
   const descricao = descricaoAlbum();
 
-  logStep(`Preenchendo título: ${titulo}`, onStep);
-  await album.cadastroTitulo.fill(titulo);
+  await preencherCampoAlbum(album.cadastroTitulo, titulo, {
+    etapa: 'novo álbum',
+    rotulo: 'Título',
+    onStep,
+  });
 
-  logStep(`Preenchendo informações: ${descricao}`, onStep);
+  logStep(`Preenchendo informações adicionais: ${descricao}`, onStep);
   await album.cadastroDescricao.fill(descricao);
 
   logStep('Salvando cadastro do álbum...', onStep);
-  await album.salvarCadastro.click();
-  await album.cadastroAlbumModal.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
+  const btnSalvar = await waitVisible(album.salvarCadastro.first(), {
+    etapa: 'novo álbum',
+    mensagem: 'Não foi possível localizar o botão "Salvar cadastro".',
+  });
+  await btnSalvar.click();
+
+  await album.cadastroAlbumForm.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT }).catch(() => {
+    return album.cadastroAlbumModal.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
+  });
 
   await waitVisible(album.restauracaoLi(albumRef.codigo, { legado: albumRef.legado }), {
     etapa: 'cadastro de álbum',
