@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const pkg = require('../package.json');
 
 test('configura versão, pnpm e atualização pelo GitHub', () => {
-  assert.equal(pkg.version, '3.0.4');
+  assert.equal(pkg.version, '3.0.5');
   assert.equal(pkg.packageManager, 'pnpm@10.19.0');
   assert.deepEqual(pkg.pnpm.onlyBuiltDependencies, ['electron']);
   assert.equal(pkg.dependencies['electron-updater'], '^6.6.2');

@@ -12,6 +12,8 @@ function createCodontoApi(ipcRenderer) {
     definirDesde: (data) => ipcRenderer.invoke('config:definirDesde', data),
     obterPollInterval: () => ipcRenderer.invoke('config:obterPollInterval'),
     definirPollInterval: (segundos) => ipcRenderer.invoke('config:definirPollInterval', segundos),
+    obterEstadoToken: () => ipcRenderer.invoke('config:obterAgentToken'),
+    salvarToken: (token) => ipcRenderer.invoke('config:salvarAgentToken', token),
 
     // Eventos vindos do main process
     onEvento: (cb) => ipcRenderer.on('worker:evento', (_, payload) => cb(payload)),

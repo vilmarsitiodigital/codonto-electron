@@ -63,6 +63,8 @@ function setPollInterval(segundos) {
 }
 
 module.exports = {
+  lerConfig,
+  salvarConfig,
   getTarefasDesde,
   setTarefasDesde,
   hojeLocal,

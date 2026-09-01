@@ -5,6 +5,9 @@ const worker = require('./worker');
 const { fecharBrowser } = require('./codontoAutomation');
 const { buscarStatus } = require('./apiClient');
 const { getTarefasDesde, setTarefasDesde, hojeLocal, getPollInterval, setPollInterval } = require('./config');
+const { getProductionAgentTokenStore } = require('./agentTokenStore');
+const { createAgentService } = require('./agentService');
+const { registerAgentIpc } = require('./agentIpc');
 const logger = require('./logger');
 const { createProductionUpdater } = require('./updater/updaterService');
 const { CHANNELS, registerUpdaterIpc } = require('./updater/updaterIpc');
@@ -15,7 +18,13 @@ let tray = null;
 let updaterService = null;
 let cleanupUpdaterIpc = null;
 let cleanupUpdaterReady = null;
+let cleanupAgentIpc = null;
 let isQuitting = false;
+
+const agentService = createAgentService({
+  tokenStore: getProductionAgentTokenStore(),
+  worker,
+});
 
 // ─── Janela principal ─────────────────────────────────────────
 function criarJanela() {
@@ -74,9 +83,10 @@ function criarTray() {
 }
 
 function atualizarMenuTray() {
-  const rodando = worker.estaRodando();
-  const aguardandoLogin = worker.estaAguardandoLogin();
-  const statusLabel = aguardandoLogin
+  const { rodando, aguardandoLogin, configuracaoNecessaria } = agentService.status();
+  const statusLabel = configuracaoNecessaria
+    ? '⚙️ Configuração necessária'
+    : aguardandoLogin
     ? '🔐 Aguardando login no Codonto'
     : rodando
       ? '🟢 Agente ativo'
@@ -91,14 +101,10 @@ function atualizarMenuTray() {
     { type: 'separator' },
     {
       label: rodando ? 'Pausar agente' : 'Iniciar agente',
+      enabled: !configuracaoNecessaria,
       click: () => {
-        if (rodando) worker.parar();
-        else worker.iniciar();
-        atualizarMenuTray();
-        mainWindow?.webContents.send('agente:status', {
-          rodando: worker.estaRodando(),
-          aguardandoLogin: worker.estaAguardandoLogin(),
-        });
+        const state = rodando ? agentService.parar() : agentService.iniciar();
+        publicarEstadoAgente(state);
       },
     },
     { label: 'Abrir painel', click: () => mainWindow?.show() },
@@ -116,24 +122,12 @@ function atualizarMenuTray() {
   tray?.setContextMenu(menu);
 }
 
+function publicarEstadoAgente(state = agentService.status()) {
+  atualizarMenuTray();
+  mainWindow?.webContents.send('agente:status', state);
+}
+
 // ─── IPC — comunicação main ↔ renderer ───────────────────────
-ipcMain.handle('agente:iniciar', () => {
-  worker.iniciar();
-  atualizarMenuTray();
-  return { rodando: true };
-});
-
-ipcMain.handle('agente:parar', () => {
-  worker.parar();
-  atualizarMenuTray();
-  return { rodando: false };
-});
-
-ipcMain.handle('agente:status', () => ({
-  rodando: worker.estaRodando(),
-  aguardandoLogin: worker.estaAguardandoLogin(),
-}));
-
 ipcMain.handle('status:buscar', async () => {
   try {
     return await buscarStatus(getTarefasDesde());
@@ -209,11 +203,17 @@ app.whenReady().then(() => {
     },
   });
   cleanupUpdaterIpc = registerUpdaterIpc({ ipcMain, app, service: updaterService });
+  cleanupAgentIpc = registerAgentIpc({
+    ipcMain,
+    service: agentService,
+    onStateChanged: publicarEstadoAgente,
+  });
   criarJanela();
   criarTray();
 
-  // Inicia o agente automaticamente
-  worker.iniciar();
+  // Inicia automaticamente apenas quando existe uma credencial utilizável.
+  agentService.iniciarSeConfigurado();
+  atualizarMenuTray();
 
   logger.info('Codonto Sync iniciado', {
     versao: app.getVersion(),
@@ -232,6 +232,8 @@ app.on('before-quit', async () => {
   updaterService?.dispose();
   cleanupUpdaterIpc?.();
   cleanupUpdaterIpc = null;
-  worker.parar();
+  cleanupAgentIpc?.();
+  cleanupAgentIpc = null;
+  agentService.parar();
   await fecharBrowser();
 });

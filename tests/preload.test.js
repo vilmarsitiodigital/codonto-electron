@@ -61,3 +61,17 @@ test('assina eventos sem expor o evento Electron e remove o listener', () => {
   unsubscribe();
   assert.equal(ipc.listenerCount('updater:event'), 0);
 });
+
+test('expõe somente estado e salvamento do token pelos canais seguros', async () => {
+  const ipc = createFakeIpcRenderer();
+  const api = createCodontoApi(ipc);
+
+  await api.obterEstadoToken();
+  await api.salvarToken('segredo');
+
+  assert.deepEqual(ipc.invocations, [
+    ['config:obterAgentToken'],
+    ['config:salvarAgentToken', 'segredo'],
+  ]);
+  assert.equal(Object.hasOwn(api, 'obterToken'), false);
+});
