@@ -29,7 +29,7 @@ function createAgentService({ tokenStore, worker }) {
 
   function salvarToken(token) {
     const tokenState = tokenStore.saveToken(token);
-    worker.iniciar();
+    if (tokenState.configurado) worker.iniciar();
     return { ...tokenState, ...status() };
   }
 

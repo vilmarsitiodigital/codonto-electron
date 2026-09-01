@@ -3,7 +3,11 @@ const assert = require('node:assert/strict');
 
 const { createAgentService } = require('../src/main/agentService');
 
-function createFixture({ configurado = false, fixoViaEnv = false } = {}) {
+function createFixture({
+  configurado = false,
+  fixoViaEnv = false,
+  configuradoDepoisDeSalvar = true,
+} = {}) {
   let tokenState = {
     configurado,
     fixoViaEnv,
@@ -18,7 +22,7 @@ function createFixture({ configurado = false, fixoViaEnv = false } = {}) {
     saveToken: (token) => {
       calls.push(['saveToken', token]);
       tokenState = {
-        configurado: true,
+        configurado: configuradoDepoisDeSalvar,
         fixoViaEnv: false,
         disponivelParaSalvar: true,
       };
@@ -82,6 +86,20 @@ test('salva o token e inicia o worker imediatamente', () => {
     configuracaoNecessaria: false,
   });
   assert.deepEqual(fixture.calls, [['saveToken', 'novo-token'], ['iniciar']]);
+});
+
+test('não inicia o worker quando o token continua ilegível depois de salvar', () => {
+  const fixture = createFixture({ configuradoDepoisDeSalvar: false });
+
+  assert.deepEqual(fixture.service.salvarToken('novo-token'), {
+    configurado: false,
+    fixoViaEnv: false,
+    disponivelParaSalvar: true,
+    rodando: false,
+    aguardandoLogin: false,
+    configuracaoNecessaria: true,
+  });
+  assert.deepEqual(fixture.calls, [['saveToken', 'novo-token']]);
 });
 
 test('bloqueia também a ação manual de iniciar sem token', () => {
