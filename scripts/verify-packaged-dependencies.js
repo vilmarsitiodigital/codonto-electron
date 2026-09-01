@@ -38,9 +38,16 @@ function verifyDependencyGraph(packageTree, {
   const visitedPackages = new Set();
   let verifiedEdges = 0;
 
-  function verifyDependencies(dependencies, parentPackageDir, parentLabel, optional = false) {
+  function verifyDependencies(
+    dependencies,
+    parentPackageDir,
+    parentLabel,
+    optional = false,
+    optionalDependencyNames = new Set(),
+  ) {
     for (const [name, metadata] of Object.entries(dependencies || {})) {
-      if (optional && !isInstalledPackage(metadata)) {
+      const dependencyIsOptional = optional || optionalDependencyNames.has(name);
+      if (dependencyIsOptional && !isInstalledPackage(metadata)) {
         continue;
       }
 
@@ -74,7 +81,13 @@ function verifyDependencyGraph(packageTree, {
 
       visitedPackages.add(visitKey);
       const packageLabel = `${name}@${manifest.version}`;
-      verifyDependencies(metadata.dependencies, packageDir, packageLabel);
+      verifyDependencies(
+        metadata.dependencies,
+        packageDir,
+        packageLabel,
+        false,
+        new Set(Object.keys(manifest.optionalDependencies || {})),
+      );
       verifyDependencies(metadata.optionalDependencies, packageDir, packageLabel, true);
     }
   }
