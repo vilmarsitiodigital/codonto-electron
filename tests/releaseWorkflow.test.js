@@ -3,11 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
-  const workflow = fs.readFileSync(
-    path.join(__dirname, '../.github/workflows/release.yml'),
-    'utf8',
-  );
+function assertReleaseWorkflow(workflow) {
+  const normalizedWorkflow = workflow.replace(/\r\n/g, '\n');
 
   for (const required of [
     "tags:\n      - 'v*'",
@@ -23,10 +20,28 @@ test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
     'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
     'pnpm run release:win',
   ]) {
-    assert.match(workflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(normalizedWorkflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 
-  const guardPosition = workflow.indexOf('Verify tag matches package version');
-  assert.ok(guardPosition < workflow.indexOf('pnpm test'));
-  assert.ok(guardPosition < workflow.indexOf('pnpm run release:win'));
+  const guardPosition = normalizedWorkflow.indexOf('Verify tag matches package version');
+  assert.ok(guardPosition < normalizedWorkflow.indexOf('pnpm test'));
+  assert.ok(guardPosition < normalizedWorkflow.indexOf('pnpm run release:win'));
+}
+
+test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, '../.github/workflows/release.yml'),
+    'utf8',
+  );
+
+  assertReleaseWorkflow(workflow);
+});
+
+test('valida o workflow após checkout com finais de linha do Windows', () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, '../.github/workflows/release.yml'),
+    'utf8',
+  ).replace(/\n/g, '\r\n');
+
+  assertReleaseWorkflow(workflow);
 });
