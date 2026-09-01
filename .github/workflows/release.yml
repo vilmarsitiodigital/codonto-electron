@@ -40,6 +40,12 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Package Windows app for verification
+        run: pnpm run package:win:dir
+
+      - name: Verify packaged runtime dependencies
+        run: pnpm run verify:package
+
       - name: Build and publish Windows installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

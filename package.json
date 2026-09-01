@@ -1,6 +1,6 @@
 {
   "name": "codonto-sync",
-  "version": "3.0.5",
+  "version": "3.0.6",
   "packageManager": "pnpm@10.19.0",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -15,7 +15,9 @@
     "test": "node --test",
     "build": "electron-builder --win --x64",
     "build:mac": "electron-builder --mac",
-    "release:win": "electron-builder --win --x64 --publish always"
+    "package:win:dir": "electron-builder --win --x64 --dir",
+    "verify:package": "node scripts/verify-packaged-dependencies.js",
+    "release:win": "electron-builder --win --x64 --prepackaged dist/win-unpacked --publish always"
   },
   "build": {
     "appId": "br.artdental.codonto-sync",
@@ -51,6 +53,7 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
     "yaml": "^2.9.0"
