@@ -2,6 +2,9 @@
   "name": "codonto-sync",
   "version": "3.0.1",
   "packageManager": "pnpm@10.19.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron"]
+  },
   "description": "Agente local para sincronização WhatsApp → Codonto",
   "main": "src/main/index.js",
   "scripts": {

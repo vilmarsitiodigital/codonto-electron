@@ -15,8 +15,10 @@
     let unsubscribe;
     let initialized = false;
     let destroyed = false;
+    let hideRevision = 0;
 
     function handleEvent(event) {
+      hideRevision += 1;
       resetActions(elements);
       elements.banner.hidden = false;
 
@@ -24,7 +26,10 @@
         elements.message.textContent = eventMessages[event.type];
         if (event.type === 'checking') elements.checkButton.disabled = true;
         if (event.type === 'up-to-date') {
-          scheduleHide(() => { elements.banner.hidden = true; });
+          const scheduledRevision = hideRevision;
+          scheduleHide(() => {
+            if (scheduledRevision === hideRevision) elements.banner.hidden = true;
+          });
         }
         return;
       }
@@ -79,6 +84,7 @@
       if (destroyed) return;
       destroyed = true;
       initialized = false;
+      hideRevision += 1;
       elements.checkButton.removeEventListener('click', onCheck);
       elements.downloadButton.removeEventListener('click', onDownload);
       elements.installButton.removeEventListener('click', onInstall);

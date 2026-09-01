@@ -145,6 +145,19 @@ test('desabilita a verificação e oculta confirmação de versão atualizada', 
   assert.equal(harness.elements.banner.hidden, true);
 });
 
+test('não deixa a confirmação antiga ocultar um novo estado de atualização', async () => {
+  const harness = createHarness();
+  await harness.controller.init();
+
+  harness.emit({ type: 'up-to-date' });
+  harness.emit({ type: 'available', version: '3.0.2' });
+  harness.scheduleHideCalls[0].callback();
+
+  assert.equal(harness.elements.message.textContent, 'Versão 3.0.2 disponível.');
+  assert.equal(harness.elements.downloadButton.hidden, false);
+  assert.equal(harness.elements.banner.hidden, false);
+});
+
 test('renderiza a falha retornada por uma ação', async () => {
   const harness = createHarness({
     checkResult: { success: false, error: 'Sem conexão com o servidor de atualizações. Tente novamente mais tarde.' },
@@ -159,12 +172,15 @@ test('renderiza a falha retornada por uma ação', async () => {
 test('remove listeners e cancela a inscrição uma vez ao destruir', async () => {
   const harness = createHarness();
   await harness.controller.init();
+  harness.emit({ type: 'up-to-date' });
 
   harness.controller.destroy();
   harness.controller.destroy();
+  harness.scheduleHideCalls[0].callback();
 
   assert.equal(harness.elements.checkButton.listenerCount, 0);
   assert.equal(harness.elements.downloadButton.listenerCount, 0);
   assert.equal(harness.elements.installButton.listenerCount, 0);
   assert.equal(harness.calls.unsubscribe, 1);
+  assert.equal(harness.elements.banner.hidden, false);
 });
