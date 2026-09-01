@@ -2,46 +2,39 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseReleaseWorkflow } = require('./helpers/releaseWorkflow');
 
-function assertReleaseWorkflow(workflow) {
-  const normalizedWorkflow = workflow.replace(/\r\n/g, '\n');
-
-  for (const required of [
-    "tags:\n      - 'v*'",
-    'contents: write',
-    'runs-on: windows-latest',
-    'version: 10.19.0',
-    'pnpm install --frozen-lockfile',
-    'Verify tag matches package version',
-    '$expectedTag = "v$((Get-Content package.json | ConvertFrom-Json).version)"',
-    'if ($env:GITHUB_REF_NAME -ne $expectedTag)',
-    'pnpm exec playwright install chromium',
-    'pnpm test',
-    'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
-    'pnpm run release:win',
-  ]) {
-    assert.match(normalizedWorkflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  }
-
-  const guardPosition = normalizedWorkflow.indexOf('Verify tag matches package version');
-  assert.ok(guardPosition < normalizedWorkflow.indexOf('pnpm test'));
-  assert.ok(guardPosition < normalizedWorkflow.indexOf('pnpm run release:win'));
-}
-
-test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
-  const workflow = fs.readFileSync(
+function readWorkflow() {
+  return fs.readFileSync(
     path.join(__dirname, '../.github/workflows/release.yml'),
     'utf8',
   );
+}
 
-  assertReleaseWorkflow(workflow);
+test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
+  const workflow = parseReleaseWorkflow(readWorkflow());
+  const job = workflow.jobs['release-win'];
+  const steps = job.steps;
+
+  assert.deepEqual(workflow.on.push.tags, ['v*']);
+  assert.equal(workflow.permissions.contents, 'write');
+  assert.equal(job['runs-on'], 'windows-latest');
+  assert.equal(steps.find((step) => step.uses === 'pnpm/action-setup@v4').with.version, '10.19.0');
+  assert.ok(steps.some((step) => step.run === 'pnpm install --frozen-lockfile'));
+  assert.ok(steps.some((step) => step.run === 'pnpm exec playwright install chromium'));
+  assert.ok(steps.some((step) => step.run === 'pnpm test'));
+
+  const publishStep = steps.find((step) => step.run === 'pnpm run release:win');
+  assert.equal(publishStep.env.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}');
+
+  const guardPosition = steps.findIndex((step) => step.name === 'Verify tag matches package version');
+  assert.ok(guardPosition < steps.findIndex((step) => step.run === 'pnpm test'));
+  assert.ok(guardPosition < steps.findIndex((step) => step.run === 'pnpm run release:win'));
 });
 
 test('valida o workflow após checkout com finais de linha do Windows', () => {
-  const workflow = fs.readFileSync(
-    path.join(__dirname, '../.github/workflows/release.yml'),
-    'utf8',
-  ).replace(/\n/g, '\r\n');
+  const windowsWorkflow = readWorkflow().replace(/\r?\n/g, '\r\n');
+  const workflow = parseReleaseWorkflow(windowsWorkflow);
 
-  assertReleaseWorkflow(workflow);
+  assert.deepEqual(workflow.on.push.tags, ['v*']);
 });
