@@ -6,9 +6,14 @@ const { fecharBrowser } = require('./codontoAutomation');
 const { buscarStatus } = require('./apiClient');
 const { getTarefasDesde, setTarefasDesde, hojeLocal, getPollInterval, setPollInterval } = require('./config');
 const logger = require('./logger');
+const { createProductionUpdater } = require('./updater/updaterService');
+const { CHANNELS, registerUpdaterIpc } = require('./updater/updaterIpc');
 
 let mainWindow = null;
 let tray = null;
+let updaterService = null;
+let cleanupUpdaterIpc = null;
+let isQuitting = false;
 
 // ─── Janela principal ─────────────────────────────────────────
 function criarJanela() {
@@ -37,8 +42,9 @@ function criarJanela() {
   });
 
   // Minimiza para bandeja em vez de fechar
-  mainWindow.on('close', (e) => {
-    e.preventDefault();
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
     mainWindow.hide();
   });
 }
@@ -190,6 +196,18 @@ app.whenReady().then(() => {
   criarJanela();
   criarTray();
 
+  updaterService = createProductionUpdater({
+    logger,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    sendEvent: (payload) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send(CHANNELS.event, payload);
+    },
+  });
+  cleanupUpdaterIpc = registerUpdaterIpc({ ipcMain, app, service: updaterService });
+  updaterService.init();
+
   // Inicia o agente automaticamente
   worker.iniciar();
 
@@ -204,6 +222,10 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', async () => {
+  isQuitting = true;
+  updaterService?.dispose();
+  cleanupUpdaterIpc?.();
+  cleanupUpdaterIpc = null;
   worker.parar();
   await fecharBrowser();
 });
