@@ -6,9 +6,9 @@ const {
 } = require('../scripts/verify-packaged-dependencies');
 
 function createArchive(packages) {
-  const manifests = new Map(Object.entries(packages).map(([packageDir, version]) => [
+  const manifests = new Map(Object.entries(packages).map(([packageDir, manifest]) => [
     `${packageDir}/package.json`,
-    { version },
+    typeof manifest === 'string' ? { version: manifest } : manifest,
   ]));
 
   return {
@@ -200,6 +200,37 @@ test('ignora dependência opcional incompatível que não foi instalada na plata
     excluded: [],
     verifiedEdges: 0,
     verifiedPackages: 0,
+  });
+});
+
+test('reconhece opcional transitiva mesmo quando o pnpm a lista como dependência', () => {
+  const packageTree = [{
+    dependencies: {
+      playwright: {
+        version: '1.61.1',
+        dependencies: {
+          fsevents: {
+            version: '2.3.2',
+            path: 'C:\\projeto\\node_modules\\.pnpm\\fsevents@2.3.2\\node_modules\\fsevents',
+          },
+        },
+      },
+    },
+  }];
+  const archive = {
+    ...createArchive({
+      '/node_modules/playwright': {
+        version: '1.61.1',
+        optionalDependencies: { fsevents: '2.3.2' },
+      },
+    }),
+    isInstalledPackage: () => false,
+  };
+
+  assert.deepEqual(verifyDependencyGraph(packageTree, archive), {
+    excluded: [],
+    verifiedEdges: 1,
+    verifiedPackages: 1,
   });
 });
 
