@@ -88,8 +88,9 @@ function getLocators(page) {
       cadastroTitulo: cadastroAlbumForm.locator('#Titulo'),
       cadastroDescricao: cadastroAlbumForm.locator('#Descricao'),
       salvarCadastro: cadastroAlbumModal
-        .locator('button.btn-primary').filter({ hasText: /salvar cadastro/i })
-        .or(page.getByRole('button', { name: /salvar cadastro/i })),
+        .locator('button.btn-primary').filter({
+          hasText: /^\s*salvar(?: cadastro)?\s*$/i,
+        }),
       restauracaoAlbum: (codigo) =>
         page.locator('span.album.pointer').filter({
           has: page.locator('.big-text.text-primary', { hasText: String(codigo) }),
