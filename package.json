@@ -1,16 +1,18 @@
 {
   "name": "codonto-sync",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "packageManager": "pnpm@10.19.0",
   "pnpm": {
-    "onlyBuiltDependencies": ["electron"]
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   },
   "description": "Agente local para sincronização WhatsApp → Codonto",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "test": "node --test tests/*.test.js",
+    "test": "node --test",
     "build": "electron-builder --win --x64",
     "build:mac": "electron-builder --mac",
     "release:win": "electron-builder --win --x64 --publish always"
