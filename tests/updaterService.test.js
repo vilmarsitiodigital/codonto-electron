@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   createUpdaterService,
+  BUSY_MESSAGE,
   UNSUPPORTED_MESSAGE,
 } = require('../src/main/updater/updaterService');
 
@@ -21,13 +22,13 @@ function createHarness({
   const intervalCalls = [];
   const clearedTimeouts = [];
   const clearedIntervals = [];
-  let resolveCheck;
+  const checkResolvers = [];
 
   updater.checkForUpdates = () => {
     if (checkError) return Promise.reject(checkError);
     if (pendingCheck) {
       return new Promise((resolve) => {
-        resolveCheck = resolve;
+        checkResolvers.push(resolve);
       });
     }
     return Promise.resolve();
@@ -73,7 +74,7 @@ function createHarness({
     intervalCalls,
     clearedTimeouts,
     clearedIntervals,
-    resolveCheck: () => resolveCheck(),
+    resolveCheck: (index = 0) => checkResolvers[index](),
   };
 }
 
@@ -213,4 +214,44 @@ test('não agenda intervalo após descartar durante a verificação inicial', as
   await initialCheck;
 
   assert.equal(harness.intervalCalls.length, 0);
+});
+
+test('não instala um segundo intervalo quando a verificação inicial antiga termina após reinicializar', async () => {
+  const harness = createHarness({ pendingCheck: true });
+  harness.service.init();
+  const oldInitialCheck = harness.timeoutCalls[0].callback();
+
+  harness.updater.checkForUpdates = () => Promise.resolve();
+  harness.service.dispose();
+  harness.service.init();
+  const newInitialCheck = harness.timeoutCalls[1].callback();
+  await newInitialCheck;
+  harness.resolveCheck(0);
+  await oldInitialCheck;
+
+  assert.equal(harness.intervalCalls.length, 1);
+});
+
+test('mantém operações bloqueadas após reinicializar enquanto a verificação anterior está pendente', async () => {
+  const harness = createHarness({ pendingCheck: true });
+  harness.service.init();
+  const oldInitialCheck = harness.timeoutCalls[0].callback();
+
+  harness.updater.checkForUpdates = () => Promise.resolve();
+  harness.service.dispose();
+  harness.service.init();
+
+  assert.deepEqual(await harness.service.check(), {
+    success: false,
+    code: 'busy',
+    error: BUSY_MESSAGE,
+  });
+  assert.deepEqual(await harness.service.download(), {
+    success: false,
+    code: 'busy',
+    error: BUSY_MESSAGE,
+  });
+  harness.resolveCheck();
+  await oldInitialCheck;
+  assert.deepEqual(await harness.service.download(), { success: true });
 });

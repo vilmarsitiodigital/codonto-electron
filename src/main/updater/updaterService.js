@@ -23,7 +23,9 @@ function createUpdaterService({
   clearIntervalFn = clearInterval,
 }) {
   let initialized = false;
+  let lifecycleGeneration = 0;
   let operation = null;
+  let inFlightOperationCount = 0;
   let initialTimer = null;
   let checkInterval = null;
   const listeners = [];
@@ -40,8 +42,9 @@ function createUpdaterService({
 
   async function runOperation(name, action) {
     if (!supported) return { success: false, code: 'unsupported', error: UNSUPPORTED_MESSAGE };
-    if (operation) return { success: false, code: 'busy', error: BUSY_MESSAGE };
+    if (operation || inFlightOperationCount > 0) return { success: false, code: 'busy', error: BUSY_MESSAGE };
     operation = name;
+    inFlightOperationCount += 1;
     try {
       await action();
       return { success: true };
@@ -52,12 +55,14 @@ function createUpdaterService({
       return { success: false, code: 'error', error: safeMessage };
     } finally {
       operation = null;
+      inFlightOperationCount -= 1;
     }
   }
 
   function init() {
     if (initialized) return;
     initialized = true;
+    const generation = ++lifecycleGeneration;
 
     if (!supported) {
       emit({ type: 'unsupported', message: UNSUPPORTED_MESSAGE });
@@ -82,7 +87,7 @@ function createUpdaterService({
 
     initialTimer = setTimeoutFn(async () => {
       await runOperation('verificação', () => updater.checkForUpdates());
-      if (!initialized) return;
+      if (!initialized || generation !== lifecycleGeneration) return;
       checkInterval = setIntervalFn(() => {
         runOperation('verificação', () => updater.checkForUpdates());
       }, CHECK_INTERVAL_MS);
@@ -90,6 +95,7 @@ function createUpdaterService({
   }
 
   function dispose() {
+    lifecycleGeneration += 1;
     if (initialTimer) clearTimeoutFn(initialTimer);
     if (checkInterval) clearIntervalFn(checkInterval);
     initialTimer = null;
@@ -108,7 +114,7 @@ function createUpdaterService({
     download: () => runOperation('download', () => updater.downloadUpdate()),
     install() {
       if (!supported) return { success: false, code: 'unsupported', error: UNSUPPORTED_MESSAGE };
-      if (operation) return { success: false, code: 'busy', error: BUSY_MESSAGE };
+      if (operation || inFlightOperationCount > 0) return { success: false, code: 'busy', error: BUSY_MESSAGE };
       logger.info('[updater] Reiniciando para instalar atualização');
       updater.quitAndInstall();
       return { success: true };
