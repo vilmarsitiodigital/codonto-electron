@@ -182,6 +182,27 @@ test('rejeita dependência opcional instalada que ficou fora do pacote', () => {
   );
 });
 
+test('ignora dependência opcional incompatível que não foi instalada na plataforma', () => {
+  const packageTree = [{
+    optionalDependencies: {
+      fsevents: {
+        version: '2.3.2',
+        path: 'C:\\projeto\\node_modules\\.pnpm\\fsevents@2.3.2\\node_modules\\fsevents',
+      },
+    },
+  }];
+  const archive = {
+    ...createArchive({}),
+    isInstalledPackage: () => false,
+  };
+
+  assert.deepEqual(verifyDependencyGraph(packageTree, archive), {
+    excluded: [],
+    verifiedEdges: 0,
+    verifiedPackages: 0,
+  });
+});
+
 test('normaliza caminhos do app.asar no Windows sem alterar o caminho de extração', () => {
   let extractedPath;
   const archive = createArchiveManifestReader('app.asar', {
