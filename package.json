@@ -1,6 +1,6 @@
 {
   "name": "codonto-sync",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "packageManager": "pnpm@10.19.0",
   "pnpm": {
     "onlyBuiltDependencies": [
