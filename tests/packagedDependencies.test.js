@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  createArchiveManifestReader,
   verifyDependencyGraph,
 } = require('../scripts/verify-packaged-dependencies');
 
@@ -179,4 +180,31 @@ test('rejeita dependência opcional instalada que ficou fora do pacote', () => {
     () => verifyDependencyGraph(packageTree, archive),
     /aplicação não resolve platform-runtime@1\.0\.0/,
   );
+});
+
+test('normaliza caminhos do app.asar no Windows sem alterar o caminho de extração', () => {
+  let extractedPath;
+  const archive = createArchiveManifestReader('app.asar', {
+    listPackage: () => [
+      '\\node_modules\\axios\\package.json',
+    ],
+    extractFile: (_asarPath, manifestPath) => {
+      extractedPath = manifestPath;
+      return Buffer.from('{"version":"1.0.0"}');
+    },
+  });
+
+  assert.deepEqual(archive.packageManifestPaths, [
+    '/node_modules/axios/package.json',
+  ]);
+  assert.deepEqual(verifyDependencyGraph([{
+    dependencies: {
+      axios: { version: '1.0.0' },
+    },
+  }], archive), {
+    excluded: [],
+    verifiedEdges: 1,
+    verifiedPackages: 1,
+  });
+  assert.equal(extractedPath, 'node_modules\\axios\\package.json');
 });

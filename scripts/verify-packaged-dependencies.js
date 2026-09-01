@@ -106,21 +106,35 @@ function readProductionTree(projectDir) {
   return JSON.parse(output);
 }
 
+function createArchiveManifestReader(asarPath, asarApi = asar) {
+  const originalPathByNormalized = new Map();
+
+  for (const originalPath of asarApi.listPackage(asarPath)) {
+    const normalizedPath = originalPath.replace(/\\/g, '/');
+    if (normalizedPath.includes('/node_modules/') && normalizedPath.endsWith('/package.json')) {
+      originalPathByNormalized.set(normalizedPath, originalPath);
+    }
+  }
+
+  return {
+    packageManifestPaths: [...originalPathByNormalized.keys()],
+    readPackageManifest: (normalizedPath) => {
+      const originalPath = originalPathByNormalized.get(normalizedPath);
+      return JSON.parse(
+        asarApi.extractFile(asarPath, originalPath.slice(1)).toString('utf8'),
+      );
+    },
+  };
+}
+
 function verifyPackagedDependencies({
   projectDir = process.cwd(),
   asarPath = path.join(projectDir, 'dist', 'win-unpacked', 'resources', 'app.asar'),
 } = {}) {
-  const packagedFiles = asar.listPackage(asarPath);
-  const packageManifestPaths = packagedFiles.filter((file) => (
-    file.includes('/node_modules/') && file.endsWith('/package.json')
-  ));
-
-  return verifyDependencyGraph(readProductionTree(projectDir), {
-    packageManifestPaths,
-    readPackageManifest: (manifestPath) => JSON.parse(
-      asar.extractFile(asarPath, manifestPath.slice(1)).toString('utf8'),
-    ),
-  });
+  return verifyDependencyGraph(
+    readProductionTree(projectDir),
+    createArchiveManifestReader(asarPath),
+  );
 }
 
 if (require.main === module) {
@@ -140,6 +154,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  createArchiveManifestReader,
   packageLookupCandidates,
   verifyDependencyGraph,
   verifyPackagedDependencies,
