@@ -6,9 +6,16 @@ const { fecharBrowser } = require('./codontoAutomation');
 const { buscarStatus } = require('./apiClient');
 const { getTarefasDesde, setTarefasDesde, hojeLocal, getPollInterval, setPollInterval } = require('./config');
 const logger = require('./logger');
+const { createProductionUpdater } = require('./updater/updaterService');
+const { CHANNELS, registerUpdaterIpc } = require('./updater/updaterIpc');
+const { initUpdaterAfterRendererLoad } = require('./updater/updaterLifecycle');
 
 let mainWindow = null;
 let tray = null;
+let updaterService = null;
+let cleanupUpdaterIpc = null;
+let cleanupUpdaterReady = null;
+let isQuitting = false;
 
 // ─── Janela principal ─────────────────────────────────────────
 function criarJanela() {
@@ -30,6 +37,10 @@ function criarJanela() {
     show: false,
   });
 
+  cleanupUpdaterReady = initUpdaterAfterRendererLoad({
+    webContents: mainWindow.webContents,
+    service: updaterService,
+  });
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
@@ -37,8 +48,9 @@ function criarJanela() {
   });
 
   // Minimiza para bandeja em vez de fechar
-  mainWindow.on('close', (e) => {
-    e.preventDefault();
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
     mainWindow.hide();
   });
 }
@@ -187,6 +199,16 @@ worker.onEvento((tipo, dados) => {
 
 // ─── App lifecycle ────────────────────────────────────────────
 app.whenReady().then(() => {
+  updaterService = createProductionUpdater({
+    logger,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    sendEvent: (payload) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send(CHANNELS.event, payload);
+    },
+  });
+  cleanupUpdaterIpc = registerUpdaterIpc({ ipcMain, app, service: updaterService });
   criarJanela();
   criarTray();
 
@@ -204,6 +226,12 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', async () => {
+  isQuitting = true;
+  cleanupUpdaterReady?.();
+  cleanupUpdaterReady = null;
+  updaterService?.dispose();
+  cleanupUpdaterIpc?.();
+  cleanupUpdaterIpc = null;
   worker.parar();
   await fecharBrowser();
 });

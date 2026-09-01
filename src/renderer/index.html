@@ -24,6 +24,7 @@
       border-bottom: 1px solid #334155;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
     }
     .header-logo {
@@ -44,6 +45,45 @@
     }
     .header-title { font-size: 16px; font-weight: 600; color: #f1f5f9; }
     .header-sub   { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+    .header-update {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .app-version { font-size: 11px; color: #94a3b8; white-space: nowrap; }
+
+    /* ── Atualização da aplicação ── */
+    .update-banner {
+      padding: 10px 24px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 11px;
+    }
+    .update-message { color: #cbd5e1; flex: 1 1 180px; }
+    .update-progress {
+      flex: 1 1 120px;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #334155;
+    }
+    .update-progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: #3b82f6;
+      transition: width .2s ease;
+    }
+    .update-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .btn-update-install { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .btn-update-install:hover:not(:disabled) { background: #15803d; color: #fff; }
 
     /* ── Status badge ── */
     .status-bar {
@@ -236,6 +276,21 @@
       <div class="header-title">Codonto Sync</div>
       <div class="header-sub">Agente WhatsApp → Codonto</div>
     </div>
+    <div class="header-update">
+      <span id="app-version" class="app-version">Versão —</span>
+      <button type="button" id="btn-update-check" class="btn-sm">Atualizar versão</button>
+    </div>
+  </div>
+
+  <div id="update-banner" class="update-banner" hidden>
+    <span id="update-message" class="update-message"></span>
+    <div id="update-progress" class="update-progress" hidden>
+      <div id="update-progress-bar" class="update-progress-bar"></div>
+    </div>
+    <div class="update-actions">
+      <button type="button" id="btn-update-download" class="btn-sm" hidden>Atualizar</button>
+      <button type="button" id="btn-update-install" class="btn-sm btn-update-install" hidden>Reiniciar agora</button>
+    </div>
   </div>
 
   <!-- Status -->
@@ -285,6 +340,7 @@
     <button class="btn-link" id="btn-logs">Abrir pasta de logs</button>
   </div>
 
+  <script src="./updaterUi.js"></script>
   <script>
     let agentRodando = true;
     const MAX_EVENTOS = 50;
@@ -461,8 +517,23 @@
       window.codonto.abrirLogs();
     });
 
+    const updaterController = window.CodontoUpdaterUi.createUpdaterController({
+      api: window.codonto,
+      elements: {
+        version: document.getElementById('app-version'),
+        checkButton: document.getElementById('btn-update-check'),
+        banner: document.getElementById('update-banner'),
+        message: document.getElementById('update-message'),
+        progress: document.getElementById('update-progress'),
+        progressBar: document.getElementById('update-progress-bar'),
+        downloadButton: document.getElementById('btn-update-download'),
+        installButton: document.getElementById('btn-update-install'),
+      },
+    });
+
     // ── Init ──────────────────────────────────────────────────
     (async () => {
+      await updaterController.init();
       const { rodando, aguardandoLogin } = await window.codonto.statusAgente();
       setStatus(rodando, aguardandoLogin);
       await carregarDesde();

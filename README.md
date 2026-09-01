@@ -39,14 +39,14 @@ POLL_INTERVAL=15
 2. Instale as dependências:
 
 ```bash
-npm install
-npx playwright install chromium
+pnpm install
+pnpm exec playwright install chromium
 ```
 
 3. Rode em desenvolvimento:
 
 ```bash
-npm start
+pnpm run dev
 ```
 
 ---
@@ -61,7 +61,7 @@ mas os seletores CSS/XPath precisam ser mapeados na interface real do Codonto.
 Use o Playwright Inspector para gravar os cliques:
 
 ```bash
-npx playwright codegen https://app.codonto.com.br
+pnpm exec playwright codegen https://app.codonto.com.br
 ```
 
 Isso abre o Codonto no Chrome com gravação automática. Faça o fluxo manualmente:
@@ -83,12 +83,30 @@ marcados com `⚠️` no `codontoAutomation.js` pelos gerados.
 
 ```bash
 # No Windows ou via CI
-npm run build
+pnpm run build
 
-# Gera: dist/Codonto Sync Setup 1.0.0.exe
+# Gera: dist/Codonto Sync Setup X.Y.Z.exe
 ```
 
 O instalador NSIS inclui opção de pasta e configura autostart no Windows.
+
+## Atualizações
+
+Para publicar uma atualização, aumente a versão, envie a branch principal e depois
+envie a tag correspondente:
+
+```bash
+pnpm version patch
+git push origin main
+git push origin v3.0.2
+```
+
+A tag deve corresponder à versão em `package.json`. Ao receber uma tag `v*`, o
+workflow publica automaticamente o instalador Windows e seus arquivos de atualização.
+O primeiro instalador com suporte ao atualizador é o `3.0.1`; para testar uma atualização
+de ponta a ponta, publique uma versão posterior, como `3.0.2`.
+
+Enviar uma tag é uma ação de release separada e não faz parte do desenvolvimento comum.
 
 ---
 

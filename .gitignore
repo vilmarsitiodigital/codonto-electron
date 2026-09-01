@@ -46,3 +46,6 @@ Thumbs.db
 # Cache
 .cache/
 .eslintcache
+
+# Worktrees locais do Codex
+.worktrees/
