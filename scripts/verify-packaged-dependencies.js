@@ -1,4 +1,5 @@
 const path = require('node:path');
+const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const asar = require('@electron/asar');
 
@@ -29,6 +30,7 @@ function packageLookupCandidates(parentPackageDir, packageName) {
 function verifyDependencyGraph(packageTree, {
   packageManifestPaths,
   readPackageManifest,
+  isInstalledPackage = () => true,
 }) {
   const availableManifests = new Set(packageManifestPaths);
   const excluded = new Set();
@@ -36,8 +38,12 @@ function verifyDependencyGraph(packageTree, {
   const visitedPackages = new Set();
   let verifiedEdges = 0;
 
-  function verifyDependencies(dependencies, parentPackageDir, parentLabel) {
+  function verifyDependencies(dependencies, parentPackageDir, parentLabel, optional = false) {
     for (const [name, metadata] of Object.entries(dependencies || {})) {
+      if (optional && !isInstalledPackage(metadata)) {
+        continue;
+      }
+
       if (AUDITED_EXCLUSIONS.has(name)) {
         excluded.add(name);
         continue;
@@ -69,13 +75,13 @@ function verifyDependencyGraph(packageTree, {
       visitedPackages.add(visitKey);
       const packageLabel = `${name}@${manifest.version}`;
       verifyDependencies(metadata.dependencies, packageDir, packageLabel);
-      verifyDependencies(metadata.optionalDependencies, packageDir, packageLabel);
+      verifyDependencies(metadata.optionalDependencies, packageDir, packageLabel, true);
     }
   }
 
   for (const project of packageTree) {
     verifyDependencies(project.dependencies, '/', 'aplicação');
-    verifyDependencies(project.optionalDependencies, '/', 'aplicação');
+    verifyDependencies(project.optionalDependencies, '/', 'aplicação', true);
   }
 
   if (errors.length > 0) {
@@ -133,7 +139,12 @@ function verifyPackagedDependencies({
 } = {}) {
   return verifyDependencyGraph(
     readProductionTree(projectDir),
-    createArchiveManifestReader(asarPath),
+    {
+      ...createArchiveManifestReader(asarPath),
+      isInstalledPackage: (metadata) => (
+        !metadata.path || fs.existsSync(path.join(metadata.path, 'package.json'))
+      ),
+    },
   );
 }
 
