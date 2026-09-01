@@ -106,6 +106,7 @@
     .badge.ativo   { background: #052e16; color: #4ade80; border: 1px solid #16a34a; }
     .badge.parado  { background: #1c0000; color: #f87171; border: 1px solid #dc2626; }
     .badge.aguardando { background: #422006; color: #fbbf24; border: 1px solid #d97706; }
+    .badge.configuracao { background: #172554; color: #93c5fd; border: 1px solid #2563eb; }
     .badge.dot::before {
       content: '';
       width: 6px;
@@ -132,6 +133,7 @@
     .btn-toggle.parar:hover  { background: #b91c1c; }
     .btn-toggle.iniciar { background: #16a34a; color: #fff; }
     .btn-toggle.iniciar:hover { background: #15803d; }
+    .btn-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
 
     /* ── Filtro de data ── */
     .filter-bar {
@@ -153,7 +155,8 @@
     }
     .filter-bar label { white-space: nowrap; }
     .filter-bar input[type="date"],
-    .filter-bar input[type="number"] {
+    .filter-bar input[type="number"],
+    .filter-bar input[type="password"] {
       background: #1e293b;
       border: 1px solid #334155;
       border-radius: 6px;
@@ -163,7 +166,27 @@
     }
     .filter-bar input[type="number"] { width: 52px; }
     .filter-bar input[type="date"]:disabled,
-    .filter-bar input[type="number"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    .filter-bar input[type="number"]:disabled,
+    .filter-bar input[type="password"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    .token-section { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+    .token-row { width: 100%; flex-wrap: nowrap; }
+    .token-row label { min-width: 102px; }
+    .token-input { flex: 1 1 160px; min-width: 0; }
+    .token-actions { justify-content: flex-end; width: 100%; gap: 8px; }
+    .token-status {
+      font-size: 10px;
+      color: #94a3b8;
+      padding: 2px 7px;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .token-message {
+      width: 100%;
+      text-align: right;
+      color: #94a3b8;
+      font-size: 10px;
+    }
     .filter-suffix { font-size: 11px; color: #64748b; }
     .btn-sm {
       padding: 4px 10px;
@@ -301,6 +324,23 @@
 
   <!-- Filtros -->
   <div class="filter-bar">
+    <div class="token-section">
+      <div class="filter-row token-row">
+        <label for="input-agent-token">Token do agente:</label>
+        <input
+          type="password"
+          id="input-agent-token"
+          class="token-input"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="filter-row token-actions">
+        <span id="agent-token-status" class="token-status">Verificando…</span>
+        <button type="button" id="btn-save-agent-token" class="btn-sm">Salvar token</button>
+      </div>
+      <div id="agent-token-message" class="token-message" hidden></div>
+    </div>
     <div class="filter-row">
       <label for="input-desde">Processar tarefas desde:</label>
       <input type="date" id="input-desde" />
@@ -341,8 +381,9 @@
   </div>
 
   <script src="./updaterUi.js"></script>
+  <script src="./agentTokenUi.js"></script>
   <script>
-    let agentRodando = true;
+    let agentRodando = false;
     const MAX_EVENTOS = 50;
 
     const badge      = document.getElementById('badge');
@@ -353,9 +394,15 @@
     const inputIntervalo = document.getElementById('input-intervalo');
 
     // ── Atualiza UI do status ──────────────────────────────────
-    function setStatus(rodando, aguardandoLogin = false) {
+    function setStatus(rodando, aguardandoLogin = false, configuracaoNecessaria = false) {
       agentRodando = rodando;
-      if (aguardandoLogin) {
+      btnToggle.disabled = configuracaoNecessaria;
+      if (configuracaoNecessaria) {
+        badge.className = 'badge configuracao';
+        badge.textContent = 'Configuração necessária';
+        btnToggle.className = 'btn-toggle iniciar';
+        btnToggle.textContent = 'Configurar token';
+      } else if (aguardandoLogin) {
         badge.className = 'badge aguardando dot';
         badge.textContent = 'Aguardando login';
         btnToggle.className = 'btn-toggle parar';
@@ -376,11 +423,11 @@
     // ── Botão iniciar/pausar ───────────────────────────────────
     btnToggle.addEventListener('click', async () => {
       if (agentRodando) {
-        await window.codonto.pararAgente();
-        setStatus(false);
+        const state = await window.codonto.pararAgente();
+        setStatus(state.rodando, state.aguardandoLogin, state.configuracaoNecessaria);
       } else {
-        await window.codonto.iniciarAgente();
-        setStatus(true);
+        const state = await window.codonto.iniciarAgente();
+        setStatus(state.rodando, state.aguardandoLogin, state.configuracaoNecessaria);
       }
     });
 
@@ -457,7 +504,9 @@
       atualizarCards();
     });
 
-    window.codonto.onStatusAgente(({ rodando, aguardandoLogin }) => setStatus(rodando, aguardandoLogin));
+    window.codonto.onStatusAgente(({ rodando, aguardandoLogin, configuracaoNecessaria }) => (
+      setStatus(rodando, aguardandoLogin, configuracaoNecessaria)
+    ));
 
     // ── Cards de resumo ───────────────────────────────────────
     async function atualizarCards() {
@@ -531,11 +580,25 @@
       },
     });
 
+    const agentTokenController = window.CodontoAgentTokenUi.createAgentTokenController({
+      api: window.codonto,
+      elements: {
+        input: document.getElementById('input-agent-token'),
+        saveButton: document.getElementById('btn-save-agent-token'),
+        status: document.getElementById('agent-token-status'),
+        message: document.getElementById('agent-token-message'),
+      },
+      onAgentState: ({ rodando, aguardandoLogin, configuracaoNecessaria }) => {
+        setStatus(rodando, aguardandoLogin, configuracaoNecessaria);
+      },
+    });
+
     // ── Init ──────────────────────────────────────────────────
     (async () => {
       await updaterController.init();
-      const { rodando, aguardandoLogin } = await window.codonto.statusAgente();
-      setStatus(rodando, aguardandoLogin);
+      await agentTokenController.init();
+      const { rodando, aguardandoLogin, configuracaoNecessaria } = await window.codonto.statusAgente();
+      setStatus(rodando, aguardandoLogin, configuracaoNecessaria);
       await carregarDesde();
       await carregarIntervalo();
       await atualizarCards();

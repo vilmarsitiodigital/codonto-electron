@@ -27,7 +27,7 @@ codonto-electron/
 
 ## Configuração
 
-1. Copie `.env` e preencha:
+1. Copie `.env` e preencha as URLs:
 
 ```env
 API_URL=https://webhook.artdental.com.br
@@ -35,6 +35,15 @@ AGENT_TOKEN=cole_aqui_o_agent_poll_token
 CODONTO_URL=https://app.codonto.com.br
 POLL_INTERVAL=15
 ```
+
+O `AGENT_TOKEN` também pode ser informado na tela inicial. Nesse caso, o Electron
+o criptografa com a proteção do sistema operacional e o persiste no `config.json`
+do usuário; o valor não volta a ser exibido pela interface. Sem token, o agente
+permanece parado com o estado **Configuração necessária**.
+
+Quando `AGENT_TOKEN` estiver preenchido no `.env`, ele tem prioridade e a edição
+pela tela fica bloqueada. Para permitir que o próprio usuário configure o token,
+deixe essa variável vazia ou remova-a do `.env`.
 
 2. Instale as dependências:
 
