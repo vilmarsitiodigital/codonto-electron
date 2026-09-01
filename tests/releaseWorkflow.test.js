@@ -15,6 +15,9 @@ test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
     'runs-on: windows-latest',
     'version: 10.19.0',
     'pnpm install --frozen-lockfile',
+    'Verify tag matches package version',
+    '$expectedTag = "v$((Get-Content package.json | ConvertFrom-Json).version)"',
+    'if ($env:GITHUB_REF_NAME -ne $expectedTag)',
     'pnpm exec playwright install chromium',
     'pnpm test',
     'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
@@ -22,4 +25,8 @@ test('release por tag usa Windows, pnpm, testes e GITHUB_TOKEN', () => {
   ]) {
     assert.match(workflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+
+  const guardPosition = workflow.indexOf('Verify tag matches package version');
+  assert.ok(guardPosition < workflow.indexOf('pnpm test'));
+  assert.ok(guardPosition < workflow.indexOf('pnpm run release:win'));
 });

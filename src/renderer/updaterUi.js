@@ -8,7 +8,6 @@
     elements.downloadButton.hidden = true;
     elements.installButton.hidden = true;
     elements.progress.hidden = true;
-    elements.checkButton.disabled = false;
   }
 
   function createUpdaterController({ api, elements, scheduleHide = (callback) => setTimeout(callback, 3000) }) {
@@ -16,15 +15,28 @@
     let initialized = false;
     let destroyed = false;
     let hideRevision = 0;
+    let ready = false;
+    let pendingAction = false;
+    let currentEvent = { type: 'idle' };
+    let downloadedEvent = null;
 
-    function handleEvent(event) {
-      hideRevision += 1;
+    function disableControls(disabled) {
+      elements.checkButton.disabled = disabled;
+      elements.downloadButton.disabled = disabled;
+      elements.installButton.disabled = disabled;
+    }
+
+    function render(event) {
       resetActions(elements);
+      disableControls(!ready || pendingAction);
+
+      if (event.type === 'idle') return;
+
       elements.banner.hidden = false;
 
       if (eventMessages[event.type]) {
         elements.message.textContent = eventMessages[event.type];
-        if (event.type === 'checking') elements.checkButton.disabled = true;
+        if (event.type === 'checking') disableControls(true);
         if (event.type === 'up-to-date') {
           const scheduledRevision = hideRevision;
           scheduleHide(() => {
@@ -42,6 +54,7 @@
 
       if (event.type === 'downloading') {
         elements.message.textContent = `Baixando atualização… ${event.percent}%`;
+        disableControls(true);
         elements.progress.hidden = false;
         elements.progressBar.style.width = `${event.percent}%`;
         return;
@@ -50,18 +63,43 @@
       if (event.type === 'downloaded') {
         elements.message.textContent = `Versão ${event.version} pronta para instalar.`;
         elements.installButton.hidden = false;
+        elements.checkButton.disabled = true;
         return;
       }
 
       if (event.type === 'unsupported' || event.type === 'error') {
         elements.message.textContent = event.message;
+        if (downloadedEvent) {
+          elements.installButton.hidden = false;
+          elements.checkButton.disabled = true;
+        }
       }
     }
 
+    function handleEvent(event) {
+      hideRevision += 1;
+      if (downloadedEvent && event.type !== 'downloaded' && event.type !== 'error') {
+        currentEvent = downloadedEvent;
+        render(currentEvent);
+        return;
+      }
+      if (event.type === 'downloaded') downloadedEvent = event;
+      currentEvent = event;
+      render(currentEvent);
+    }
+
     async function runAction(action) {
-      const result = await action();
-      if (result && result.success === false) {
-        handleEvent({ type: 'error', message: result.error });
+      if (pendingAction) return;
+      pendingAction = true;
+      render(currentEvent);
+      try {
+        const result = await action();
+        if (result && result.success === false && result.code !== 'busy') {
+          handleEvent({ type: 'error', message: result.error });
+        }
+      } finally {
+        pendingAction = false;
+        if (!destroyed) render(currentEvent);
       }
     }
 
@@ -78,12 +116,16 @@
       elements.installButton.addEventListener('click', onInstall);
       unsubscribe = api.onAtualizacao(handleEvent);
       elements.version.textContent = `Versão ${await api.obterVersao()}`;
+      ready = true;
+      render(currentEvent);
     }
 
     function destroy() {
       if (destroyed) return;
       destroyed = true;
       initialized = false;
+      ready = false;
+      disableControls(true);
       hideRevision += 1;
       elements.checkButton.removeEventListener('click', onCheck);
       elements.downloadButton.removeEventListener('click', onDownload);
@@ -93,6 +135,8 @@
         unsubscribe = undefined;
       }
     }
+
+    disableControls(true);
 
     return { init, handleEvent, destroy };
   }

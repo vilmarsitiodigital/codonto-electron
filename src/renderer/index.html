@@ -533,12 +533,12 @@
 
     // ── Init ──────────────────────────────────────────────────
     (async () => {
+      await updaterController.init();
       const { rodando, aguardandoLogin } = await window.codonto.statusAgente();
       setStatus(rodando, aguardandoLogin);
       await carregarDesde();
       await carregarIntervalo();
       await atualizarCards();
-      await updaterController.init();
     })();
 
     // Atualiza cards a cada 30s

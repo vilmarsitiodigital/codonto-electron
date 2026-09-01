@@ -85,7 +85,7 @@ marcados com `⚠️` no `codontoAutomation.js` pelos gerados.
 # No Windows ou via CI
 pnpm run build
 
-# Gera: dist/Codonto Sync Setup 1.0.0.exe
+# Gera: dist/Codonto Sync Setup X.Y.Z.exe
 ```
 
 O instalador NSIS inclui opção de pasta e configura autostart no Windows.

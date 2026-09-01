@@ -8,11 +8,13 @@ const { getTarefasDesde, setTarefasDesde, hojeLocal, getPollInterval, setPollInt
 const logger = require('./logger');
 const { createProductionUpdater } = require('./updater/updaterService');
 const { CHANNELS, registerUpdaterIpc } = require('./updater/updaterIpc');
+const { initUpdaterAfterRendererLoad } = require('./updater/updaterLifecycle');
 
 let mainWindow = null;
 let tray = null;
 let updaterService = null;
 let cleanupUpdaterIpc = null;
+let cleanupUpdaterReady = null;
 let isQuitting = false;
 
 // ─── Janela principal ─────────────────────────────────────────
@@ -35,6 +37,10 @@ function criarJanela() {
     show: false,
   });
 
+  cleanupUpdaterReady = initUpdaterAfterRendererLoad({
+    webContents: mainWindow.webContents,
+    service: updaterService,
+  });
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
@@ -193,9 +199,6 @@ worker.onEvento((tipo, dados) => {
 
 // ─── App lifecycle ────────────────────────────────────────────
 app.whenReady().then(() => {
-  criarJanela();
-  criarTray();
-
   updaterService = createProductionUpdater({
     logger,
     isPackaged: app.isPackaged,
@@ -206,7 +209,8 @@ app.whenReady().then(() => {
     },
   });
   cleanupUpdaterIpc = registerUpdaterIpc({ ipcMain, app, service: updaterService });
-  updaterService.init();
+  criarJanela();
+  criarTray();
 
   // Inicia o agente automaticamente
   worker.iniciar();
@@ -223,6 +227,8 @@ app.on('window-all-closed', (e) => {
 
 app.on('before-quit', async () => {
   isQuitting = true;
+  cleanupUpdaterReady?.();
+  cleanupUpdaterReady = null;
   updaterService?.dispose();
   cleanupUpdaterIpc?.();
   cleanupUpdaterIpc = null;

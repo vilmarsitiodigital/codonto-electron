@@ -26,6 +26,8 @@ function createUpdaterService({
   let lifecycleGeneration = 0;
   let operation = null;
   let inFlightOperationCount = 0;
+  let downloadedVersion = null;
+  let reportedErrorObjects = new WeakSet();
   let initialTimer = null;
   let checkInterval = null;
   const listeners = [];
@@ -40,6 +42,16 @@ function createUpdaterService({
     listeners.push([eventName, handler]);
   }
 
+  function reportError(logMessage, error) {
+    const isObject = error !== null && (typeof error === 'object' || typeof error === 'function');
+    const safeMessage = formatUpdaterError(error);
+    if (isObject && reportedErrorObjects.has(error)) return safeMessage;
+    if (isObject) reportedErrorObjects.add(error);
+    logger.error(logMessage, { error });
+    emit({ type: 'error', message: safeMessage });
+    return safeMessage;
+  }
+
   async function runOperation(name, action) {
     if (!supported) return { success: false, code: 'unsupported', error: UNSUPPORTED_MESSAGE };
     if (operation || inFlightOperationCount > 0) return { success: false, code: 'busy', error: BUSY_MESSAGE };
@@ -49,9 +61,7 @@ function createUpdaterService({
       await action();
       return { success: true };
     } catch (error) {
-      logger.error(`[updater] Falha em ${name}`, { error });
-      const safeMessage = formatUpdaterError(error);
-      emit({ type: 'error', message: safeMessage });
+      const safeMessage = reportError(`[updater] Falha em ${name}`, error);
       return { success: false, code: 'error', error: safeMessage };
     } finally {
       operation = null;
@@ -72,26 +82,43 @@ function createUpdaterService({
     updater.autoDownload = false;
     updater.autoInstallOnAppQuit = true;
 
-    addListener('checking-for-update', () => emit({ type: 'checking' }));
-    addListener('update-not-available', () => emit({ type: 'up-to-date' }));
-    addListener('update-available', (update) => emit({ type: 'available', version: update.version }));
+    addListener('checking-for-update', () => {
+      if (!downloadedVersion) emit({ type: 'checking' });
+    });
+    addListener('update-not-available', () => {
+      if (!downloadedVersion) emit({ type: 'up-to-date' });
+    });
+    addListener('update-available', (update) => {
+      if (!downloadedVersion) emit({ type: 'available', version: update.version });
+    });
     addListener('download-progress', (progress) => {
+      if (downloadedVersion) return;
       const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
       emit({ type: 'downloading', percent });
     });
-    addListener('update-downloaded', (update) => emit({ type: 'downloaded', version: update.version }));
+    addListener('update-downloaded', (update) => {
+      downloadedVersion = update.version;
+      emit({ type: 'downloaded', version: downloadedVersion });
+    });
     addListener('error', (error) => {
-      logger.error('[updater] Falha no atualizador', { error });
-      emit({ type: 'error', message: formatUpdaterError(error) });
+      reportError('[updater] Falha no atualizador', error);
     });
 
     initialTimer = setTimeoutFn(async () => {
-      await runOperation('verificação', () => updater.checkForUpdates());
+      await check();
       if (!initialized || generation !== lifecycleGeneration) return;
       checkInterval = setIntervalFn(() => {
-        runOperation('verificação', () => updater.checkForUpdates());
+        check();
       }, CHECK_INTERVAL_MS);
     }, INITIAL_CHECK_DELAY_MS);
+  }
+
+  function check() {
+    if (downloadedVersion) {
+      emit({ type: 'downloaded', version: downloadedVersion });
+      return Promise.resolve({ success: true });
+    }
+    return runOperation('verificação', () => updater.checkForUpdates());
   }
 
   function dispose() {
@@ -106,17 +133,20 @@ function createUpdaterService({
     listeners.length = 0;
     initialized = false;
     operation = null;
+    downloadedVersion = null;
+    reportedErrorObjects = new WeakSet();
   }
 
   return {
     init,
-    check: () => runOperation('verificação', () => updater.checkForUpdates()),
+    check,
     download: () => runOperation('download', () => updater.downloadUpdate()),
     install() {
       if (!supported) return { success: false, code: 'unsupported', error: UNSUPPORTED_MESSAGE };
       if (operation || inFlightOperationCount > 0) return { success: false, code: 'busy', error: BUSY_MESSAGE };
       logger.info('[updater] Reiniciando para instalar atualização');
       updater.quitAndInstall();
+      downloadedVersion = null;
       return { success: true };
     },
     dispose,

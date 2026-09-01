@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $expectedTag = "v$((Get-Content package.json | ConvertFrom-Json).version)"
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Release tag '$env:GITHUB_REF_NAME' must match package version '$expectedTag'."
+          }
+
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium
 

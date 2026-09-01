@@ -25,6 +25,7 @@ function createHarness({
   const checkResolvers = [];
 
   updater.checkForUpdates = () => {
+    updater.checkForUpdatesCalls = (updater.checkForUpdatesCalls || 0) + 1;
     if (checkError) return Promise.reject(checkError);
     if (pendingCheck) {
       return new Promise((resolve) => {
@@ -254,4 +255,48 @@ test('mantém operações bloqueadas após reinicializar enquanto a verificaçã
   harness.resolveCheck();
   await oldInitialCheck;
   assert.deepEqual(await harness.service.download(), { success: true });
+});
+
+test('mantém a atualização baixada e suprime verificações manuais e periódicas', async () => {
+  const harness = createHarness();
+  harness.service.init();
+  harness.updater.emit('update-downloaded', { version: '3.0.2' });
+
+  assert.deepEqual(await harness.service.check(), { success: true });
+  await harness.timeoutCalls[0].callback();
+  await harness.intervalCalls[0].callback();
+
+  assert.equal(harness.updater.checkForUpdatesCalls || 0, 0);
+  assert.deepEqual(harness.events.slice(-4), [
+    { type: 'downloaded', version: '3.0.2' },
+    { type: 'downloaded', version: '3.0.2' },
+    { type: 'downloaded', version: '3.0.2' },
+    { type: 'downloaded', version: '3.0.2' },
+  ]);
+
+  harness.service.dispose();
+  harness.service.init();
+  assert.deepEqual(await harness.service.check(), { success: true });
+  assert.equal(harness.updater.checkForUpdatesCalls, 1);
+});
+
+test('relata uma vez o mesmo erro emitido e rejeitado pelo electron-updater', async () => {
+  const harness = createHarness();
+  const error = new Error('net::ERR_INTERNET_DISCONNECTED');
+  harness.service.init();
+  harness.updater.checkForUpdates = async () => {
+    harness.updater.emit('error', error);
+    throw error;
+  };
+
+  assert.deepEqual(await harness.service.check(), {
+    success: false,
+    code: 'error',
+    error: 'Sem conexão com o servidor de atualizações. Tente novamente mais tarde.',
+  });
+  assert.equal(harness.errorLogs.length, 1);
+  assert.deepEqual(harness.events, [{
+    type: 'error',
+    message: 'Sem conexão com o servidor de atualizações. Tente novamente mais tarde.',
+  }]);
 });
